@@ -1,7 +1,6 @@
 package dev.namn.steady_fetch.models
 
 internal const val DEFAULT_CHUNK_SIZE_BYTES: Long = 5L * 1024 * 1024
-internal const val DEFAULT_MAX_SUPPORTED_CHUNKS: Int = 16
 
 internal fun formatByteCount(bytes: Long): String {
     val kb = bytes / 1024.0

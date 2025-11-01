@@ -177,13 +177,20 @@ internal class SteadyFetchController(private val application: Application) {
         require(bytes > 0) { "totalBytes must be > 0" }
 
         val preferredSize: Long? = preferredChunkSizeBytes
-        val desiredChunkSize =
-            if (preferredSize != null && preferredSize >= 1L) preferredSize else DEFAULT_CHUNK_SIZE_BYTES
+        val desiredChunkSize = if (preferredSize != null && preferredSize >= 1L) preferredSize else DEFAULT_CHUNK_SIZE_BYTES
+        val chunkSizeLong = desiredChunkSize
+
+        val calculatedChunkCountRaw = bytes / chunkSizeLong
+        val hasRemainder = bytes % chunkSizeLong != 0L
+        val calculatedChunkCount = (calculatedChunkCountRaw + if (hasRemainder) 1L else 0L)
+            .coerceAtLeast(1L)
+        val chunkCount = calculatedChunkCount.toInt()
+        val chunkCountLong = chunkCount.toLong()
 
         val ranges = mutableListOf<LongRange>()
         var start = 0L
-        while (start < bytes) {
-            val endExclusive = (start + desiredChunkSize).coerceAtMost(bytes)
+        for (i in 0 until chunkCount) {
+            val endExclusive = (start + chunkSizeLong).coerceAtMost(bytes)
             val endInclusive = endExclusive - 1
             ranges += start..endInclusive
             start = endExclusive

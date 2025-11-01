@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToLong
+
+private const val MIN_CHUNK_SIZE_MB = 1f
+private const val MAX_CHUNK_SIZE_MB = 20f
+private const val DEFAULT_CHUNK_SIZE_MB = 5f
 
 data class ChunkProgressUi(
     val name: String,
@@ -33,7 +38,8 @@ data class DownloadUiState(
     val errorMessage: String? = null,
     val totalBytes: Long? = null,
     val overallProgress: Float = 0f,
-    val chunkProgress: List<ChunkProgressUi> = emptyList()
+    val chunkProgress: List<ChunkProgressUi> = emptyList(),
+    val preferredChunkSizeMb: Float = DEFAULT_CHUNK_SIZE_MB
 )
 
 class DownloadViewModel(application: Application) : AndroidViewModel(application) {
@@ -47,6 +53,11 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(url = url, errorMessage = null) }
     }
 
+    fun updateChunkSizeMb(value: Float) {
+        val clamped = value.coerceIn(MIN_CHUNK_SIZE_MB, MAX_CHUNK_SIZE_MB)
+        _uiState.update { it.copy(preferredChunkSizeMb = clamped) }
+    }
+
     fun queueDownload() {
         val url = _uiState.value.url.trim()
         if (url.isBlank()) {
@@ -54,12 +65,14 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
+        val chunkSizeBytes = (_uiState.value.preferredChunkSizeMb * 1024f * 1024f).roundToLong()
         val outputDir = resolveOutputDirectory()
         val fileName = deriveFileName(url)
         val request = DownloadRequest(
             url = url,
             headers = emptyMap(),
-            maxParallelChunks = 25,
+            maxParallelChunks = 4,
+            preferredChunkSizeBytes = chunkSizeBytes,
             outputDir = outputDir,
             fileName = fileName,
             chunks = null
@@ -82,15 +95,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                     status = DownloadStatus.QUEUED,
                     totalBytes = null,
                     overallProgress = 0f,
-                    chunkProgress = request.chunks?.mapIndexed { index, chunk ->
-                        ChunkProgressUi(
-                            name = chunk.name,
-                            index = index,
-                            downloadedBytes = 0L,
-                            expectedBytes = chunk.totalBytes,
-                            progress = 0f
-                        )
-                    } ?: emptyList()
+                    chunkProgress = emptyList()
                 )
             }
 
@@ -147,8 +152,8 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
     private fun calculateExpectedBytes(progress: DownloadChunkWithProgress): Long? {
         val chunk = progress.chunk
-        val chunkTotal = chunk.totalBytes
-        if (chunkTotal != null && chunkTotal > 0) return chunkTotal
+        val total = chunk.totalBytes
+        if (total != null && total > 0) return total
 
         val start = chunk.startRange
         val end = chunk.endRange
@@ -184,5 +189,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
         return computedProgress.coerceIn(0f, 1f)
     }
+
+    fun chunkSizeRange(): ClosedFloatingPointRange<Float> = MIN_CHUNK_SIZE_MB..MAX_CHUNK_SIZE_MB
 }
 
