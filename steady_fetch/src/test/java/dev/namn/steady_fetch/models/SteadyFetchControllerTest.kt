@@ -25,160 +25,89 @@ class SteadyFetchControllerTest {
 
     @Test
     fun calculateChunkRanges_perfectDivision_noRemainder() {
-        // Given
         val totalBytes = 100L
-        val maxChunks = 4
+        val chunkSizeBytes = 25L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
         assertEquals(4, nonNullChunks.size)
-        assertEquals(0L..24L, nonNullChunks[0])
-        assertEquals(25L..49L, nonNullChunks[1])
-        assertEquals(50L..74L, nonNullChunks[2])
-        assertEquals(75L..99L, nonNullChunks[3])
+        assertEquals(listOf(0L..24L, 25L..49L, 50L..74L, 75L..99L), nonNullChunks)
         verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
     }
 
     @Test
-    fun calculateChunkRanges_withRemainder_remainderDistributedToFirstChunks() {
-        // Given
+    fun calculateChunkRanges_withRemainder_lastChunkSmaller() {
         val totalBytes = 100L
-        val maxChunks = 3 // 100 / 3 = 33 remainder 1
+        val chunkSizeBytes = 30L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
-        assertEquals(3, nonNullChunks.size)
-        assertEquals(0L..33L, nonNullChunks[0]) // 34 bytes (33 + 1 remainder)
-        assertEquals(34L..66L, nonNullChunks[1]) // 33 bytes
-        assertEquals(67L..99L, nonNullChunks[2]) // 33 bytes
+        assertEquals(4, nonNullChunks.size)
+        assertEquals(listOf(0L..29L, 30L..59L, 60L..89L, 90L..99L), nonNullChunks)
         verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
     }
 
     @Test
-    fun calculateChunkRanges_smallFile_smallerThanMaxChunks() {
-        // Given
+    fun calculateChunkRanges_smallFile_unitChunkSize() {
         val totalBytes = 3L
-        val maxChunks = 10
+        val chunkSizeBytes = 1L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
-        assertEquals(3, nonNullChunks.size) // Should only create 3 chunks (one per byte)
-        assertEquals(0L..0L, nonNullChunks[0])
-        assertEquals(1L..1L, nonNullChunks[1])
-        assertEquals(2L..2L, nonNullChunks[2])
+        assertEquals(listOf(0L..0L, 1L..1L, 2L..2L), nonNullChunks)
         verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
     }
 
     @Test
     fun calculateChunkRanges_singleByte_file() {
-        // Given
-        val totalBytes = 1L
-        val maxChunks = 4
+        val chunks = steadyFetchController.calculateChunkRanges(1L, 4L)
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
-
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
-        assertEquals(1, nonNullChunks.size)
-        assertEquals(0L..0L, nonNullChunks[0])
+        assertEquals(listOf(0L..0L), nonNullChunks)
+    }
+
+    @Test
+    fun calculateChunkRanges_defaultChunkSizeWhenNull() {
+        val totalBytes = DEFAULT_CHUNK_SIZE_BYTES * 3
+
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, null)
+
+        assertNotNull(chunks)
+        val nonNullChunks = chunks!!
+        assertEquals(3, nonNullChunks.size)
         verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
     }
 
     @Test
-    fun calculateChunkRanges_maxSupportedChunksLimitsResult() {
-        // Given
-        val totalBytes = 1000L
-        val maxChunks = 20
-        val maxSupportedChunks = 8
+    fun calculateChunkRanges_preferredSizeRespectedForAllButLast() {
+        val totalBytes = 10_000L
+        val chunkSizeBytes = 512L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks, maxSupportedChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
-        assertEquals(8, nonNullChunks.size) // Should be limited by maxSupportedChunks
+        assertEquals(20, nonNullChunks.size)
+        nonNullChunks.dropLast(1).forEach { range ->
+            assertEquals(512L, range.last - range.first + 1)
+        }
         verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
-    }
-
-    @Test
-    fun calculateChunkRanges_maxChunksLimitsResult() {
-        // Given
-        val totalBytes = 1000L
-        val maxChunks = 4
-        val maxSupportedChunks = 16
-
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks, maxSupportedChunks)
-
-        // Then
-        assertNotNull(chunks)
-        val nonNullChunks = chunks!!
-        assertEquals(4, nonNullChunks.size) // Should be limited by maxChunks
-        verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
-    }
-
-    @Test
-    fun calculateChunkRanges_defaultMaxSupportedChunks() {
-        // Given
-        val totalBytes = 100L
-        val maxChunks = 20
-
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
-
-        // Then
-        assertNotNull(chunks)
-        val nonNullChunks = chunks!!
-        assertEquals(8, nonNullChunks.size) // Should use default maxSupportedChunks = 8
-        verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
-    }
-
-    @Test
-    fun calculateChunkRanges_largeFile_withManyChunks() {
-        // Given
-        val totalBytes = 10000L
-        val maxChunks = 16
-        val maxSupportedChunks = 16
-
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks, maxSupportedChunks)
-
-        // Then
-        assertNotNull(chunks)
-        val nonNullChunks = chunks!!
-        assertEquals(16, nonNullChunks.size)
-        verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
-        // Verify all chunks are approximately equal size (within 1 byte)
-        val sizes = nonNullChunks.map { it.last - it.first + 1 }
-        val minSize = sizes.minOrNull() ?: 0
-        val maxSize = sizes.maxOrNull() ?: 0
-        assertTrue("Size difference should be at most 1", maxSize - minSize <= 1)
     }
 
     @Test
     fun calculateChunkRanges_zeroTotalBytes_throwsException() {
-        // Given
         val totalBytes = 0L
-        val maxChunks = 4
+        val chunkSizeBytes = 1024L
 
-        // When/Then
         try {
-            steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+            steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
             fail("Should have thrown IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             assertTrue("Error message should mention totalBytes", e.message?.contains("totalBytes") == true)
@@ -186,44 +115,12 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_zeroMaxChunks_throwsException() {
-        // Given
-        val totalBytes = 100L
-        val maxChunks = 0
-
-        // When/Then
-        try {
-            steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
-            fail("Should have thrown IllegalArgumentException")
-        } catch (e: IllegalArgumentException) {
-            assertTrue("Error message should mention maxChunks", e.message?.contains("maxChunks") == true)
-        }
-    }
-
-    @Test
-    fun calculateChunkRanges_negativeMaxChunks_throwsException() {
-        // Given
-        val totalBytes = 100L
-        val maxChunks = -1
-
-        // When/Then
-        try {
-            steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
-            fail("Should have thrown IllegalArgumentException")
-        } catch (e: IllegalArgumentException) {
-            assertTrue("Error message should mention maxChunks", e.message?.contains("maxChunks") == true)
-        }
-    }
-
-    @Test
     fun calculateChunkRanges_negativeTotalBytes_throwsException() {
-        // Given
         val totalBytes = -100L
-        val maxChunks = 4
+        val chunkSizeBytes = 1024L
 
-        // When/Then
         try {
-            steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+            steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
             fail("Should have thrown IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             assertTrue("Error message should mention totalBytes", e.message?.contains("totalBytes") == true)
@@ -232,14 +129,11 @@ class SteadyFetchControllerTest {
 
     @Test
     fun calculateChunkRanges_chunksAreContiguous_noGaps() {
-        // Given
         val totalBytes = 100L
-        val maxChunks = 5
+        val chunkSizeBytes = 20L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
         for (i in 0 until nonNullChunks.size - 1) {
@@ -251,14 +145,11 @@ class SteadyFetchControllerTest {
 
     @Test
     fun calculateChunkRanges_chunksDoNotOverlap() {
-        // Given
         val totalBytes = 100L
-        val maxChunks = 5
+        val chunkSizeBytes = 20L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
         for (i in nonNullChunks.indices) {
@@ -266,7 +157,6 @@ class SteadyFetchControllerTest {
                 if (i != j) {
                     val range1 = nonNullChunks[i]
                     val range2 = nonNullChunks[j]
-                    // Ranges should not overlap
                     assertTrue(
                         "Ranges should not overlap: $range1 and $range2",
                         range1.last < range2.first || range2.last < range1.first
@@ -277,23 +167,15 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_remainderDistribution_firstChunksGetExtraByte() {
-        // Given: 13 bytes, 3 chunks = 4, 4, 5 (remainder of 1)
+    fun calculateChunkRanges_remainderDistribution_lastChunkSmaller() {
         val totalBytes = 13L
-        val maxChunks = 3
+        val chunkSizeBytes = 4L
 
-        // When
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, maxChunks)
+        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
 
-        // Then
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
-        assertEquals(3, nonNullChunks.size)
-        val sizes = nonNullChunks.map { it.last - it.first + 1 }
-        // First chunk should get the remainder
-        assertEquals(5, sizes[0]) // 13/3 = 4 remainder 1, so first gets 5
-        assertEquals(4, sizes[1])
-        assertEquals(4, sizes[2])
+        assertEquals(listOf(0L..3L, 4L..7L, 8L..11L, 12L..12L), nonNullChunks)
         verifyChunksCoverAllBytes(nonNullChunks, totalBytes)
     }
 

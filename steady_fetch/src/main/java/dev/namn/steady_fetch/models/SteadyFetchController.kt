@@ -4,7 +4,15 @@ import android.app.Application
 import android.os.StatFs
 import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 1. store current nanos = downloadId
@@ -25,64 +33,85 @@ internal class SteadyFetchController(private val application: Application) {
     }
 
     private val downloader = NetworkDownloader()
+    private val activeRequests = ConcurrentHashMap<Long, DownloadRequest>()
+    private val downloadJobs = ConcurrentHashMap<Long, Job>()
+    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun queue(request: DownloadRequest): Long? {
         val downloadId = getCurrentTimeInNanos()
+
+        if (request.maxParallelChunks > 30) {
+            throw Exception("maxParallelChunks must not exceed 30")
+        }
+
         Log.d(
             TAG,
             "Queueing download ${request.fileName} with max ${request.maxParallelChunks} parallel chunks"
         )
 
-        prepareOutputDirectory(request.outputDir)
+        activeRequests[downloadId] = request.copy()
 
-        val totalBytes = downloader.getTotalBytesOfTheFile(request.url, request.headers)
-        validateStorageCapacity(request.outputDir, totalBytes)
-
-        val chunkRanges = calculateChunkRanges(totalBytes, request.maxParallelChunks)
-        request.chunks = createChunkMetadata(
-            downloadId = downloadId,
-            request = request,
-            totalBytes = totalBytes,
-            chunkRanges = chunkRanges
-        )
-
-        Log.d(
-            TAG,
-            "Download $downloadId prepared with ${request.chunks?.size ?: 0} chunk(s); expected size = ${totalBytes ?: "unknown"}"
-        )
+        launchDownloadJob(downloadId, request)
 
         return downloadId
     }
 
-    fun query(downloadId: Long): DownloadQueryResponse =
-        DownloadQueryResponse(
-            status = DownloadStatus.QUEUED,
+    fun query(downloadId: Long): DownloadQueryResponse {
+        val request = activeRequests[downloadId]
+            ?: return DownloadQueryResponse(
+                status = DownloadStatus.FAILED,
+                error = DownloadError(404, "Download $downloadId not found"),
+                chunks = emptyList(),
+                progress = 0f
+            )
+
+        val chunkMetadata = request.chunks.orEmpty()
+        if (chunkMetadata.isEmpty()) {
+            return DownloadQueryResponse(
+                status = DownloadStatus.QUEUED,
+                error = null,
+                chunks = emptyList(),
+                progress = 0f
+            )
+        }
+
+        val progressSnapshot = downloader.getDownloadProgressSnapshot(downloadId)
+        val chunkProgressList = chunkMetadata.map { chunk ->
+            progressSnapshot[chunk.name]
+                ?: DownloadChunkWithProgress(
+                    chunk = chunk,
+                    progress = 0f,
+                    downloadedBytes = 0L
+                )
+        }
+
+        val overallProgress = calculateOverallProgress(chunkProgressList)
+        val status = inferStatus(chunkProgressList, overallProgress)
+
+        return DownloadQueryResponse(
+            status = status,
             error = null,
-            chunks = emptyList(),
-            progress = 0f
+            chunks = chunkProgressList,
+            progress = overallProgress
         )
-
-    suspend fun cancel(downloadId: Long): Boolean = false
-
-    fun resumeInterruptedDownload() {}
-
-    private fun generateChunkNames(name: String, numChunks: Int): List<String> {
-        require(numChunks > 0) { "numChunks must be > 0" }
-        require(name.isNotBlank()) { "name must not be blank" }
-
-        val dot = name.lastIndexOf('.')
-        val (base, ext) = if (dot > 0 && dot < name.length - 1) {
-            name.substring(0, dot) to name.substring(dot)
-        } else {
-            name to ""
-        }
-
-        val width = numChunks.toString().length
-        return (1..numChunks).map { idx ->
-            "%s.part%0${width}d-of-%0${width}d%s".format(base, idx, numChunks, ext)
-        }
     }
 
+    suspend fun cancel(downloadId: Long): Boolean {
+        val job = downloadJobs.remove(downloadId)
+        val request = activeRequests.remove(downloadId)
+        if (job == null) {
+            return false
+        }
+
+        job.cancel()
+        job.cancelAndJoin()
+        downloader.clearProgress(downloadId)
+
+        Log.i(TAG, "Cancelled download $downloadId")
+        return request != null
+    }
+
+    fun resumeInterruptedDownload() {}
 
     private fun getCurrentTimeInNanos() = SystemClock.elapsedRealtimeNanos()
 
@@ -108,19 +137,6 @@ internal class SteadyFetchController(private val application: Application) {
             "Storage check passed. Available: ${formatByteCount(availableBytes)}, " +
                     "Required: ${formatByteCount(requiredBytes)}"
         )
-    }
-
-    private fun formatByteCount(bytes: Long): String {
-        val kb = bytes / 1024.0
-        val mb = kb / 1024.0
-        val gb = mb / 1024.0
-
-        return when {
-            gb >= 1.0 -> String.format("%.2f GB", gb)
-            mb >= 1.0 -> String.format("%.2f MB", mb)
-            kb >= 1.0 -> String.format("%.2f KB", kb)
-            else -> "$bytes bytes"
-        }
     }
 
     private fun prepareOutputDirectory(directory: File) {
@@ -151,31 +167,29 @@ internal class SteadyFetchController(private val application: Application) {
 
     internal fun calculateChunkRanges(
         totalBytes: Long?,
-        requestedChunks: Int,
-        maxSupportedChunks: Int = 8
+        preferredChunkSizeBytes: Long?
     ): List<LongRange>? {
-        totalBytes ?: run {
+        val bytes: Long = totalBytes ?: run {
             Log.i(TAG, "Chunk calculation skipped: content length unknown")
             return null
         }
 
-        require(totalBytes > 0) { "totalBytes must be > 0" }
-        require(requestedChunks > 0) { "maxChunks must be > 0" }
+        require(bytes > 0) { "totalBytes must be > 0" }
 
-        val chunksDesired = minOf(maxSupportedChunks, requestedChunks)
-        val effectiveChunks = minOf(chunksDesired.toLong(), totalBytes).toInt()
-        val baseSize = totalBytes / effectiveChunks
-        val remainder = totalBytes % effectiveChunks
+        val preferredSize: Long? = preferredChunkSizeBytes
+        val desiredChunkSize =
+            if (preferredSize != null && preferredSize >= 1L) preferredSize else DEFAULT_CHUNK_SIZE_BYTES
 
-        var offset = 0L
-        return List(effectiveChunks) { index ->
-            val extraByte = if (index < remainder) 1 else 0
-            val chunkSize = baseSize + extraByte
-            val endInclusive = offset + chunkSize - 1
-            val range = offset..endInclusive
-            offset = endInclusive + 1
-            range
+        val ranges = mutableListOf<LongRange>()
+        var start = 0L
+        while (start < bytes) {
+            val endExclusive = (start + desiredChunkSize).coerceAtMost(bytes)
+            val endInclusive = endExclusive - 1
+            ranges += start..endInclusive
+            start = endExclusive
         }
+
+        return ranges
     }
 
     private fun createChunkMetadata(
@@ -210,5 +224,70 @@ internal class SteadyFetchController(private val application: Application) {
                 endRange = range.last
             )
         }
+    }
+
+    private fun inferStatus(
+        chunks: List<DownloadChunkWithProgress>,
+        overallProgress: Float
+    ): DownloadStatus {
+        if (chunks.isEmpty()) return DownloadStatus.QUEUED
+
+        val allComplete = chunks.all { isChunkComplete(it) }
+        if (allComplete && overallProgress >= 1f) return DownloadStatus.SUCCESS
+
+        val anyStarted = chunks.any { it.downloadedBytes > 0L || it.progress > 0f }
+        return if (anyStarted) DownloadStatus.RUNNING else DownloadStatus.QUEUED
+    }
+
+    private fun launchDownloadJob(downloadId: Long, request: DownloadRequest) {
+        val parallelism = request.maxParallelChunks.coerceAtLeast(1)
+        val job = downloadScope.launch {
+            try {
+                val preparedRequest = prepareDownload(downloadId, request)
+                downloader.startDownload(downloadId, preparedRequest, parallelism)
+                Log.d(TAG, "Download $downloadId completed")
+            } catch (cancelled: CancellationException) {
+                Log.i(TAG, "Download $downloadId cancelled")
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "Download $downloadId failed", error)
+            }
+        }
+
+        downloadJobs[downloadId]?.cancel()
+        downloadJobs[downloadId] = job
+
+        job.invokeOnCompletion {
+            downloadJobs.remove(downloadId)
+            downloader.clearProgress(downloadId)
+        }
+    }
+
+    private suspend fun prepareDownload(
+        downloadId: Long,
+        request: DownloadRequest
+    ): DownloadRequest {
+        prepareOutputDirectory(request.outputDir)
+
+        val totalBytes = downloader.getTotalBytesOfTheFile(request.url, request.headers)
+        validateStorageCapacity(request.outputDir, totalBytes)
+
+        val chunkRanges = calculateChunkRanges(totalBytes, request.preferredChunkSizeBytes)
+        val preparedChunks = createChunkMetadata(
+            downloadId = downloadId,
+            request = request,
+            totalBytes = totalBytes,
+            chunkRanges = chunkRanges
+        )
+
+        val preparedRequest = request.copy(chunks = preparedChunks)
+        activeRequests[downloadId] = preparedRequest
+
+        Log.d(
+            TAG,
+            "Download $downloadId prepared with ${preparedChunks.size} chunk(s); expected size = ${totalBytes ?: "unknown"}"
+        )
+
+        return preparedRequest
     }
 }
