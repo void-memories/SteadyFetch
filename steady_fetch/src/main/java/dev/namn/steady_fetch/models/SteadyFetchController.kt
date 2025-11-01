@@ -30,11 +30,14 @@ import java.util.concurrent.ConcurrentHashMap
 internal class SteadyFetchController(private val application: Application) {
     companion object {
         private const val TAG = "SteadyFetchController"
+        private val HTTP_CODE_REGEX = Regex("HTTP\\s+(\\d{3})")
     }
 
     private val downloader = NetworkDownloader()
     private val activeRequests = ConcurrentHashMap<Long, DownloadRequest>()
     private val downloadJobs = ConcurrentHashMap<Long, Job>()
+    private val downloadStatuses = ConcurrentHashMap<Long, DownloadStatus>()
+    private val downloadErrors = ConcurrentHashMap<Long, DownloadError?>()
     private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun queue(request: DownloadRequest): Long? {
@@ -50,6 +53,8 @@ internal class SteadyFetchController(private val application: Application) {
         )
 
         activeRequests[downloadId] = request.copy()
+        downloadStatuses[downloadId] = DownloadStatus.QUEUED
+        downloadErrors.remove(downloadId)
 
         launchDownloadJob(downloadId, request)
 
@@ -65,11 +70,14 @@ internal class SteadyFetchController(private val application: Application) {
                 progress = 0f
             )
 
+        val statusOverride = downloadStatuses[downloadId]
+        val recordedError = downloadErrors[downloadId]
+
         val chunkMetadata = request.chunks.orEmpty()
         if (chunkMetadata.isEmpty()) {
             return DownloadQueryResponse(
-                status = DownloadStatus.QUEUED,
-                error = null,
+                status = statusOverride ?: DownloadStatus.QUEUED,
+                error = recordedError,
                 chunks = emptyList(),
                 progress = 0f
             )
@@ -78,19 +86,35 @@ internal class SteadyFetchController(private val application: Application) {
         val progressSnapshot = downloader.getDownloadProgressSnapshot(downloadId)
         val chunkProgressList = chunkMetadata.map { chunk ->
             progressSnapshot[chunk.name]
-                ?: DownloadChunkWithProgress(
-                    chunk = chunk,
-                    progress = 0f,
-                    downloadedBytes = 0L
-                )
+                ?: run {
+                    val expectedBytes = expectedBytesForChunk(chunk)
+                    val downloadedBytes = when (statusOverride) {
+                        DownloadStatus.SUCCESS -> expectedBytes ?: chunk.totalBytes ?: 0L
+                        else -> 0L
+                    }
+                    val progress = when (statusOverride) {
+                        DownloadStatus.SUCCESS -> 1f
+                        else -> 0f
+                    }
+
+                    DownloadChunkWithProgress(
+                        chunk = chunk,
+                        progress = progress,
+                        downloadedBytes = downloadedBytes
+                    )
+                }
         }
 
-        val overallProgress = calculateOverallProgress(chunkProgressList)
-        val status = inferStatus(chunkProgressList, overallProgress)
+        val overallProgress = when (statusOverride) {
+            DownloadStatus.SUCCESS -> 1f
+            else -> calculateOverallProgress(chunkProgressList)
+        }
+
+        val status = statusOverride ?: inferStatus(chunkProgressList, overallProgress)
 
         return DownloadQueryResponse(
             status = status,
-            error = null,
+            error = recordedError,
             chunks = chunkProgressList,
             progress = overallProgress
         )
@@ -98,10 +122,13 @@ internal class SteadyFetchController(private val application: Application) {
 
     suspend fun cancel(downloadId: Long): Boolean {
         val job = downloadJobs.remove(downloadId)
-        val request = activeRequests.remove(downloadId)
+        val request = activeRequests[downloadId]
         if (job == null) {
             return false
         }
+
+        downloadStatuses[downloadId] = DownloadStatus.FAILED
+        downloadErrors[downloadId] = DownloadError(499, "Download $downloadId cancelled by user")
 
         job.cancel()
         job.cancelAndJoin()
@@ -222,11 +249,12 @@ internal class SteadyFetchController(private val application: Application) {
         val partNames = generateChunkNames(request.fileName, chunkRanges.size)
         return partNames.mapIndexed { index, name ->
             val range = chunkRanges[index]
+            val chunkSize = (range.last - range.first + 1).coerceAtLeast(0L)
             DownloadChunk(
                 downloadId = downloadId,
                 name = name,
                 chunkIndex = index,
-                totalBytes = totalBytes,
+                totalBytes = chunkSize,
                 startRange = range.first,
                 endRange = range.last
             )
@@ -251,13 +279,22 @@ internal class SteadyFetchController(private val application: Application) {
         val job = downloadScope.launch {
             try {
                 val preparedRequest = prepareDownload(downloadId, request)
+                downloadStatuses[downloadId] = DownloadStatus.RUNNING
+                downloadErrors.remove(downloadId)
+
                 downloader.startDownload(downloadId, preparedRequest, parallelism)
+                downloadStatuses[downloadId] = DownloadStatus.SUCCESS
+                downloadErrors.remove(downloadId)
                 Log.d(TAG, "Download $downloadId completed")
             } catch (cancelled: CancellationException) {
                 Log.i(TAG, "Download $downloadId cancelled")
+                downloadStatuses[downloadId] = DownloadStatus.FAILED
+                downloadErrors[downloadId] = DownloadError(499, "Download $downloadId cancelled")
                 throw cancelled
             } catch (error: Exception) {
                 Log.e(TAG, "Download $downloadId failed", error)
+                downloadStatuses[downloadId] = DownloadStatus.FAILED
+                downloadErrors[downloadId] = mapToDownloadError(error)
             }
         }
 
@@ -266,7 +303,6 @@ internal class SteadyFetchController(private val application: Application) {
 
         job.invokeOnCompletion {
             downloadJobs.remove(downloadId)
-            downloader.clearProgress(downloadId)
         }
     }
 
@@ -296,5 +332,29 @@ internal class SteadyFetchController(private val application: Application) {
         )
 
         return preparedRequest
+    }
+
+    private fun mapToDownloadError(error: Throwable): DownloadError {
+        if (error is CancellationException) {
+            return DownloadError(499, "Download cancelled")
+        }
+
+        val message = error.message?.takeUnless { it.isBlank() }
+            ?: error::class.java.simpleName
+        val httpCode = extractHttpCode(message)
+
+        val code = when {
+            httpCode != null -> httpCode
+            error is IllegalArgumentException || error is IllegalStateException -> 400
+            else -> 500
+        }
+
+        return DownloadError(code, message)
+    }
+
+    private fun extractHttpCode(message: String?): Int? {
+        if (message.isNullOrBlank()) return null
+        val match = HTTP_CODE_REGEX.find(message)
+        return match?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 }
