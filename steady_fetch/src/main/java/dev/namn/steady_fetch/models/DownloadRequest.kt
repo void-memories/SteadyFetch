@@ -14,11 +14,14 @@ enum class DownloadStatus {
     SUCCESS
 }
 
-data class ChunkProgress(
+data class DownloadChunk(
     val downloadId: Long,
+    val name: String,
     val chunkIndex: Int,
     val downloadedBytes: Long,
-    val totalBytes: Long?
+    val totalBytes: Long?,
+    val startRange: Long,
+    val endRange: Long
 )
 
 data class DownloadRequest(
@@ -31,6 +34,6 @@ data class DownloadRequest(
 data class DownloadQueryResponse(
     val status: DownloadStatus,
     val error: DownloadError?,
-    val chunks: List<ChunkProgress>,
+    val chunks: List<DownloadChunk>,
     val progress: Float
 )
