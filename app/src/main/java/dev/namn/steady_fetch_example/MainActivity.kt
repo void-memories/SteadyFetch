@@ -4,12 +4,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,41 +20,60 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.namn.steady_fetch.models.DownloadStatus
 import dev.namn.steady_fetch_example.ui.theme.SteadyFetchExampleTheme
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.roundToInt
 
-private val StartColor = Color(0xFFFF3864)
-private val MidColor = Color(0xFFFFC14E)
-private val EndColor = Color(0xFF37FF8B)
+private val BackgroundTopColor = Color(0xFF090B13)
+private val BackgroundBottomColor = Color(0xFF05060C)
+private val GridBaseColor = Color(0xFF161927)
+private val GridAccentColor = Color(0xFF586BFF)
+private val GridIdleColor = Color.White.copy(alpha = 0.04f)
+private val GridBorderColor = Color.White.copy(alpha = 0.12f)
+private val HudBackgroundColor = Color(0xFF101322)
+private val HudBorderColor = Color.White.copy(alpha = 0.18f)
+private val HudGlowColor = Color(0xFF586BFF)
+private val HudAccentColor = Color(0xFF7C8AFF)
+private val HudInputOverlay = Color.White.copy(alpha = 0.05f)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,9 +105,7 @@ fun DownloadScreen(
     DownloadScreenBody(
         uiState = uiState,
         onUrlChange = viewModel::updateUrl,
-        onChunkSizeChange = viewModel::updateChunkSizeMb,
         onDownloadClick = viewModel::queueDownload,
-        chunkSizeRange = viewModel.chunkSizeRange(),
         modifier = modifier
     )
 }
@@ -95,255 +114,262 @@ fun DownloadScreen(
 private fun DownloadScreenBody(
     uiState: DownloadUiState,
     onUrlChange: (String) -> Unit,
-    onChunkSizeChange: (Float) -> Unit,
     onDownloadClick: () -> Unit,
-    chunkSizeRange: ClosedFloatingPointRange<Float>,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    var showUrlDialog by remember { mutableStateOf(false) }
+    val progress = uiState.overallProgress.coerceIn(0f, 1f)
+    val status = uiState.status ?: DownloadStatus.QUEUED
+
+    Box(
         modifier = modifier
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-            .navigationBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(BackgroundTopColor, BackgroundBottomColor)
+                )
+            )
+            .fillMaxSize()
+            .navigationBarsPadding()
     ) {
-        HeaderSection(uiState.status)
-        StatusSection(uiState)
-        ChunkGrid(
+        ChunkMatrix(
             chunks = uiState.chunkProgress,
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 140.dp)
         )
-        ChunkSizeSelector(
-            currentValueMb = uiState.preferredChunkSizeMb,
-            onValueChange = onChunkSizeChange,
-            range = chunkSizeRange
-        )
-        UrlInputSection(
-            url = uiState.url,
+
+        BottomHud(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            progress = progress,
+            status = status,
+            totalBytes = uiState.totalBytes,
             isDownloading = uiState.isDownloading,
+            onAddClick = { showUrlDialog = true }
+        )
+    }
+
+    if (showUrlDialog) {
+        UrlInputDialog(
+            url = uiState.url,
             onUrlChange = onUrlChange,
-            onDownloadClick = onDownloadClick,
-            errorMessage = uiState.errorMessage
+            onDismiss = { showUrlDialog = false },
+            onConfirm = {
+                showUrlDialog = false
+                onDownloadClick()
+            },
+            errorMessage = uiState.errorMessage,
+            isDownloading = uiState.isDownloading
         )
     }
 }
 
 @Composable
-private fun HeaderSection(status: DownloadStatus?) {
-    val resolvedStatus = status ?: DownloadStatus.QUEUED
-    val badgeColor = when (resolvedStatus) {
-        DownloadStatus.SUCCESS -> EndColor
-        DownloadStatus.RUNNING -> MidColor
-        DownloadStatus.FAILED -> StartColor
-        DownloadStatus.QUEUED -> Color(0xFF9AA0FF)
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "SteadyFetch",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold
-        )
-        Box(
-            modifier = Modifier
-                .background(badgeColor.copy(alpha = 0.16f), RoundedCornerShape(10.dp))
-                .padding(horizontal = 10.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = resolvedStatus.name.lowercase().replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.labelMedium,
-                color = badgeColor,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatusSection(uiState: DownloadUiState) {
-    val progress = uiState.overallProgress.coerceIn(0f, 1f)
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        LinearProgressIndicator(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp),
-            progress = { progress },
-            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-            color = lerp(StartColor, EndColor, progress)
-        )
-        uiState.totalBytes?.let {
-            Text(
-                text = "${formatBytesForUi(it)} total",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ChunkGrid(chunks: List<ChunkProgressUi>, modifier: Modifier = Modifier) {
-    if (chunks.isEmpty()) {
-        EmptyState(modifier)
-        return
+private fun ChunkMatrix(chunks: List<ChunkProgressUi>, modifier: Modifier = Modifier) {
+    val minimumCells = 20
+    val actualItems = chunks.map { it as ChunkProgressUi? }
+    val displayItems: List<ChunkProgressUi?> = when {
+        actualItems.isEmpty() -> List(minimumCells) { null }
+        actualItems.size >= minimumCells -> actualItems
+        else -> actualItems + List(minimumCells - actualItems.size) { null }
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 72.dp),
+        columns = GridCells.Fixed(10),
         modifier = modifier,
-        contentPadding = PaddingValues(bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(chunks) { chunk ->
-            ChunkTile(chunk)
+        items(displayItems.size) { index ->
+            val chunk = displayItems[index]
+            ChunkSquare(progress = chunk?.progress)
         }
     }
 }
 
 @Composable
-private fun ChunkTile(chunk: ChunkProgressUi) {
-    val progress = chunk.progress.coerceIn(0f, 1f)
-    val tileColor = when {
-        progress < 0.5f -> lerp(StartColor, MidColor, progress * 2f)
-        else -> lerp(MidColor, EndColor, (progress - 0.5f) * 2f)
+private fun ChunkSquare(progress: Float?) {
+    val normalized = progress?.coerceIn(0f, 1f) ?: 0f
+    val animatedProgress by animateFloatAsState(
+        targetValue = normalized,
+        animationSpec = tween(durationMillis = 600),
+        label = "chunk-progress"
+    )
+
+    val hasProgress = progress != null
+    val baseColor = if (hasProgress) {
+        lerp(GridBaseColor, GridAccentColor, animatedProgress)
+    } else {
+        GridIdleColor
+    }
+
+    val backgroundModifier = if (hasProgress) {
+        Modifier.background(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    baseColor.copy(alpha = 0.95f),
+                    lerp(baseColor, Color.Black, 0.25f)
+                )
+            )
+        )
+    } else {
+        Modifier.background(baseColor)
     }
 
     Box(
         modifier = Modifier
-            .size(72.dp)
-            .background(tileColor.copy(alpha = 0.42f), RoundedCornerShape(16.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = "Chunk ${chunk.index + 1}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "${(progress * 100).toInt()}%",
-                style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .then(backgroundModifier)
+            .border(BorderStroke(1.dp, GridBorderColor))
+    )
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center
-    ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = "No downloads",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "Add a link to begin",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-            textAlign = TextAlign.Center
-        )
-    }
-    }
-}
-
-@Composable
-private fun ChunkSizeSelector(
-    currentValueMb: Float,
-    onValueChange: (Float) -> Unit,
-    range: ClosedFloatingPointRange<Float>
+private fun BottomHud(
+    modifier: Modifier = Modifier,
+    progress: Float,
+    status: DownloadStatus,
+    totalBytes: Long?,
+    isDownloading: Boolean,
+    onAddClick: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "Chunk size: ${currentValueMb.toInt()} MB",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f)
-        )
-        Slider(
-            value = currentValueMb,
-            onValueChange = onValueChange,
-            valueRange = range,
-            steps = ((range.endInclusive - range.start).toInt() - 1).coerceAtLeast(0),
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+    val progressPercent = (progress * 100f).coerceIn(0f, 100f).roundToInt()
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = HudBackgroundColor.copy(alpha = 0.92f),
+        shadowElevation = 8.dp
+    ) {
+        Column {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                trackColor = Color.Transparent,
+                color = HudGlowColor
             )
-        )
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = status.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.95f),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "$progressPercent%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = HudAccentColor
+                        )
+                        totalBytes?.let {
+                            Text(
+                                text = "· ${formatBytesForUi(it)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
+                
+                IconButton(
+                    onClick = onAddClick,
+                    enabled = !isDownloading,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (isDownloading) 
+                                Color.White.copy(alpha = 0.08f) 
+                            else 
+                                HudGlowColor.copy(alpha = 0.85f)
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Add download",
+                        tint = if (isDownloading) 
+                            Color.White.copy(alpha = 0.35f) 
+                        else 
+                            Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun UrlInputSection(
+private fun UrlInputDialog(
     url: String,
-    isDownloading: Boolean,
     onUrlChange: (String) -> Unit,
-    onDownloadClick: () -> Unit,
-    errorMessage: String?
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    errorMessage: String?,
+    isDownloading: Boolean
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedTextField(
-            value = url,
-            onValueChange = onUrlChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Download URL") },
-            singleLine = true,
-            colors = TextFieldDefaults.colors(
-                focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-                unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                cursorColor = MaterialTheme.colorScheme.primary,
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent
-            )
-        )
+    val canConfirm = url.isNotBlank() && !isDownloading
 
-        errorMessage?.let { error ->
-            Text(
-                text = error,
-                style = MaterialTheme.typography.bodySmall,
-                color = StartColor
-            )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = HudBackgroundColor,
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = "Add download",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = onUrlChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Link", color = Color.White.copy(alpha = 0.7f)) },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedIndicatorColor = Color.White.copy(alpha = 0.4f),
+                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.2f),
+                        focusedLabelColor = Color.White.copy(alpha = 0.8f),
+                        cursorColor = Color.White,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(alpha = 0.9f),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    )
+                )
+                errorMessage?.let { error ->
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = canConfirm) {
+                Text("Send", color = if (canConfirm) Color.White else Color.White.copy(alpha = 0.5f))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+            }
         }
-
-        Button(
-            onClick = onDownloadClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            enabled = !isDownloading,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f)
-            ),
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Text(
-                text = if (isDownloading) "Downloading…" else "Add URL",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
+    )
 }
 
 private fun formatBytesForUi(bytes: Long): String {
@@ -379,9 +405,7 @@ private fun DownloadScreenPreview() {
         DownloadScreenBody(
             uiState = previewState,
             onUrlChange = {},
-            onChunkSizeChange = {},
             onDownloadClick = {},
-            chunkSizeRange = 1f..20f,
             modifier = Modifier.fillMaxSize()
         )
     }
