@@ -9,7 +9,6 @@ import dev.namn.steady_fetch.progress.DownloadProgressStore
 import dev.namn.steady_fetch.managers.FileManager
 import java.io.File
 import java.io.IOException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -50,29 +49,24 @@ internal class NetworkDownloader(
      */
     suspend fun getTotalBytesOfTheFile(url: String, headers: Map<String, String> = emptyMap()): Long? {
         return withContext(Dispatchers.IO) {
-            try {
-                val requestBuilder = Request.Builder()
-                    .url(url)
-                    .head()
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .head()
 
-                headers.forEach { (key, value) ->
-                    requestBuilder.addHeader(key, value)
+            headers.forEach { (key, value) ->
+                requestBuilder.addHeader(key, value)
+            }
+
+            val request = requestBuilder.build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val contentLength = response.header("Content-Length")
+                    contentLength?.toLongOrNull()
+                } else {
+                    Log.w(TAG, "Failed to get file size: HTTP ${response.code}")
+                    null
                 }
-
-                val request = requestBuilder.build()
-
-                okHttpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val contentLength = response.header("Content-Length")
-                        contentLength?.toLongOrNull()
-                    } else {
-                        Log.w(TAG, "Failed to get file size: HTTP ${response.code}")
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting file size from URL: $url", e)
-                null
             }
         }
     }
@@ -91,26 +85,13 @@ internal class NetworkDownloader(
                 launch {
                     semaphore.withPermit {
                         val targetFile = File(request.outputDir, chunk.name)
-                        try {
-                            downloadChunkToFile(
-                                url = request.url,
-                                headers = request.headers,
-                                chunk = chunk,
-                                outputFile = targetFile,
-                                downloadId = downloadId
-                            )
-                        } catch (cancelled: CancellationException) {
-                            progressStore.update(
-                                downloadId = downloadId,
-                                chunk = chunk,
-                                downloadedBytes = 0L,
-                                expectedBytes = ChunkManager.expectedBytesForChunk(chunk)
-                            )
-                            throw cancelled
-                        } catch (error: Exception) {
-                            Log.e(TAG, "Chunk ${chunk.chunkIndex} failed", error)
-                            throw error
-                        }
+                        downloadChunkToFile(
+                            url = request.url,
+                            headers = request.headers,
+                            chunk = chunk,
+                            outputFile = targetFile,
+                            downloadId = downloadId
+                        )
                     }
                 }
             }
@@ -144,22 +125,17 @@ internal class NetworkDownloader(
 
         val request = requestBuilder.build()
 
-        try {
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("Failed to download chunk ${chunk.chunkIndex}: HTTP ${response.code}")
-                }
-
-                val body = response.body
-                    ?: throw IOException("Empty response body while downloading chunk ${chunk.chunkIndex}")
-
-                val expectedBytes = determineExpectedBytes(chunk, body.contentLength())
-                fileManager.writeChunk(body, outputFile, chunk, expectedBytes, downloadId)
-                Log.d(TAG, "Downloaded chunk ${chunk.chunkIndex} (${chunk.name}) to ${outputFile.absolutePath}")
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Failed to download chunk ${chunk.chunkIndex}: HTTP ${response.code}")
             }
-        } catch (ioe: IOException) {
-            Log.e(TAG, "Network error downloading chunk ${chunk.chunkIndex}", ioe)
-            throw ioe
+
+            val body = response.body
+                ?: throw IOException("Empty response body while downloading chunk ${chunk.chunkIndex}")
+
+            val expectedBytes = determineExpectedBytes(chunk, body.contentLength())
+            fileManager.writeChunk(body, outputFile, chunk, expectedBytes, downloadId)
+            Log.d(TAG, "Downloaded chunk ${chunk.chunkIndex} (${chunk.name}) to ${outputFile.absolutePath}")
         }
     }
 

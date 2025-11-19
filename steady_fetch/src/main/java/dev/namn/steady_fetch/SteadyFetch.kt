@@ -4,30 +4,45 @@ import android.app.Application
 import dev.namn.steady_fetch.core.SteadyFetchController
 import java.util.concurrent.atomic.AtomicBoolean
 
-//TODO: introduce try/catch
 object SteadyFetch {
     private var steadyFetchController: SteadyFetchController? = null
     private val isInitialized = AtomicBoolean(false)
 
     @Synchronized
     fun init(application: Application) {
-        steadyFetchController = SteadyFetchController(application)
-        isInitialized.set(true)
+        try {
+            steadyFetchController = SteadyFetchController(application)
+            isInitialized.set(true)
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to initialize SteadyFetch", e)
+        }
     }
 
     fun queue(request: DownloadRequest): Long? {
-        initCheck()
-        return steadyFetchController!!.queue(request)
+        try {
+            initCheck()
+            return steadyFetchController!!.queue(request)
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to queue download: ${e.message}", e)
+        }
     }
 
     fun query(downloadId: Long): DownloadQueryResponse {
-        initCheck()
-        return steadyFetchController!!.query(downloadId)
+        try {
+            initCheck()
+            return steadyFetchController!!.query(downloadId)
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to query download: ${e.message}", e)
+        }
     }
 
     suspend fun cancel(downloadId: Long): Boolean {
-        initCheck()
-        return steadyFetchController!!.cancel(downloadId)
+        try {
+            initCheck()
+            return steadyFetchController!!.cancel(downloadId)
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to cancel download: ${e.message}", e)
+        }
     }
 
     private fun initCheck() {

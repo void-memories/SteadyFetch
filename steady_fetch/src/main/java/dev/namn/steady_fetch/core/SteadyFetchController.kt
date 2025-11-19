@@ -186,28 +186,26 @@ internal class SteadyFetchController(private val application: Application) {
     private fun launchDownloadJob(downloadId: Long, request: DownloadRequest) {
         val parallelism = request.maxParallelChunks.coerceAtLeast(1)
         val job = downloadScope.launch {
-            try {
-                val preparationResult = prepareDownload(downloadId, request)
-                val preparedRequest = preparationResult.request
-                activeRequests[downloadId] = preparedRequest
-                Log.d(
-                    TAG,
-                    "Download $downloadId prepared with ${preparedRequest.chunks?.size ?: 0} chunk(s); expected size = ${preparationResult.totalBytes ?: "unknown"}"
-                )
-                registerStatusChange(downloadId, DownloadStatus.RUNNING)
-                downloader.startDownload(downloadId, preparedRequest, parallelism)
-                registerStatusChange(downloadId, DownloadStatus.SUCCESS)
-            } catch (error: Exception) {
-                registerStatusChange(downloadId, DownloadStatus.FAILED, null, error)
-            }
+            val preparationResult = prepareDownload(downloadId, request)
+            val preparedRequest = preparationResult.request
+            activeRequests[downloadId] = preparedRequest
+            Log.d(
+                TAG,
+                "Download $downloadId prepared with ${preparedRequest.chunks?.size ?: 0} chunk(s); expected size = ${preparationResult.totalBytes ?: "unknown"}"
+            )
+            registerStatusChange(downloadId, DownloadStatus.RUNNING)
+            downloader.startDownload(downloadId, preparedRequest, parallelism)
+            registerStatusChange(downloadId, DownloadStatus.SUCCESS)
         }
 
-        //todo: is this cancelling the scope asap?
         downloadJobs[downloadId]?.cancel()
         downloadJobs[downloadId] = job
 
-        job.invokeOnCompletion {
+        job.invokeOnCompletion { throwable ->
             downloadJobs.remove(downloadId)
+            if (throwable != null) {
+                registerStatusChange(downloadId, DownloadStatus.FAILED, error = throwable as? Exception)
+            }
         }
     }
 
