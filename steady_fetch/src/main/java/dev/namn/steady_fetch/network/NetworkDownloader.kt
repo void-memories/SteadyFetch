@@ -26,12 +26,12 @@ import java.util.concurrent.TimeUnit
  * Manages OkHttp client instance and provides network utility methods.
  */
 internal class NetworkDownloader(
-    private val okHttpClient: OkHttpClient = createOkHttpClient(),
+    private val okHttpClient: OkHttpClient = buildOkHttpClient(),
     private val progressStore: DownloadProgressStore,
     private val fileManager: FileManager
 ) {
     companion object {
-        private fun createOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        private fun buildOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(Constants.DEFAULT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(Constants.DEFAULT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
@@ -44,7 +44,7 @@ internal class NetworkDownloader(
      * @param headers Optional custom headers to include in the request
      * @return The file size in bytes, or null if it cannot be determined
      */
-    suspend fun getTotalBytesOfTheFile(url: String, headers: Map<String, String> = emptyMap()): Long? {
+    suspend fun fetchFileContentLength(url: String, headers: Map<String, String> = emptyMap()): Long? {
         return withContext(Dispatchers.IO) {
             val requestBuilder = Request.Builder()
                 .url(url)
@@ -68,11 +68,11 @@ internal class NetworkDownloader(
         }
     }
 
-    suspend fun startDownload(downloadId: Long, request: DownloadRequest, parallelism: Int) {
+    suspend fun executeDownload(downloadId: Long, request: DownloadRequest, parallelism: Int) {
         require(request.fileName.isNotBlank()) { "fileName must not be blank" }
 
-        val chunkList = prepareChunks(request)
-        progressStore.initialize(downloadId, chunkList)
+        val chunkList = prepareDownloadChunks(request)
+        progressStore.initializeDownloadProgress(downloadId, chunkList)
 
         coroutineScope {
             val effectiveParallelism = parallelism.coerceIn(1, chunkList.size.coerceAtLeast(1))
@@ -82,7 +82,7 @@ internal class NetworkDownloader(
                 launch {
                     semaphore.withPermit {
                         val targetFile = File(request.outputDir, chunk.name)
-                        downloadChunkToFile(
+                        downloadChunkAndWriteToFile(
                             url = request.url,
                             headers = request.headers,
                             chunk = chunk,
@@ -97,14 +97,14 @@ internal class NetworkDownloader(
         }
     }
 
-    fun getDownloadProgressSnapshot(downloadId: Long): Map<String, DownloadChunkWithProgress> =
-        progressStore.snapshot(downloadId)
+    fun getProgressSnapshot(downloadId: Long): Map<String, DownloadChunkWithProgress> =
+        progressStore.getProgressSnapshot(downloadId)
 
-    fun clearProgress(downloadId: Long) {
-        progressStore.clear(downloadId)
+    fun clearDownloadProgress(downloadId: Long) {
+        progressStore.clearDownloadProgress(downloadId)
     }
 
-    private suspend fun downloadChunkToFile(
+    private suspend fun downloadChunkAndWriteToFile(
         url: String,
         headers: Map<String, String>,
         chunk: DownloadChunk,
@@ -130,18 +130,18 @@ internal class NetworkDownloader(
             val body = response.body
                 ?: throw IOException("Empty response body while downloading chunk ${chunk.chunkIndex}")
 
-            val expectedBytes = determineExpectedBytes(chunk, body.contentLength())
-            fileManager.writeChunk(body, outputFile, chunk, expectedBytes, downloadId)
+            val expectedBytes = calculateExpectedChunkBytes(chunk, body.contentLength())
+            fileManager.writeChunkToFile(body, outputFile, chunk, expectedBytes, downloadId)
             Log.d(Constants.TAG_NETWORK_DOWNLOADER, "Downloaded chunk ${chunk.chunkIndex} (${chunk.name}) to ${outputFile.absolutePath}")
         }
     }
 
-    private fun determineExpectedBytes(chunk: DownloadChunk, responseContentLength: Long): Long? = when {
+    private fun calculateExpectedChunkBytes(chunk: DownloadChunk, responseContentLength: Long): Long? = when {
         responseContentLength > 0 -> responseContentLength
-        else -> ChunkManager.expectedBytesForChunk(chunk)
+        else -> ChunkManager.calculateExpectedBytesForChunk(chunk)
     }
 
-    private fun prepareChunks(request: DownloadRequest): List<DownloadChunk> {
+    private fun prepareDownloadChunks(request: DownloadRequest): List<DownloadChunk> {
         val chunks = request.chunks?.takeIf { it.isNotEmpty() }
         if (chunks != null) return chunks
 

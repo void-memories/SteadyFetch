@@ -6,7 +6,7 @@ import dev.namn.steady_fetch.SteadyFetch
 class SteadyFetchExampleApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        SteadyFetch.init(this)
+        SteadyFetch.initialize(this)
     }
 }
 

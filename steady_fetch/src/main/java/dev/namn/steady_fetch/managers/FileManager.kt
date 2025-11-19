@@ -13,7 +13,7 @@ import java.io.IOException
 internal class FileManager(
     private val progressStore: DownloadProgressStore
 ) {
-    fun prepareDirectory(directory: File) {
+    fun ensureDownloadDirectoryExists(directory: File) {
         val alreadyExists = directory.exists()
         if (!alreadyExists && !directory.mkdirs()) {
             val message = "Unable to create download directory: ${directory.absolutePath}"
@@ -38,14 +38,14 @@ internal class FileManager(
         }
     }
 
-    fun writeChunk(
+    fun writeChunkToFile(
         body: ResponseBody,
         file: File,
         chunk: DownloadChunk,
         expectedBytes: Long?,
         downloadId: Long
     ) {
-        ensureDirectoryExists(file.parentFile)
+        createDirectoryIfNotExists(file.parentFile)
         FileOutputStream(file, false).use { outputStream ->
             body.byteStream().use { inputStream ->
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -56,16 +56,16 @@ internal class FileManager(
                     if (read == -1) break
                     outputStream.write(buffer, 0, read)
                     downloadedBytes += read
-                    progressStore.update(downloadId, chunk, downloadedBytes, expectedBytes)
+                    progressStore.updateChunkProgress(downloadId, chunk, downloadedBytes, expectedBytes)
                 }
 
                 outputStream.flush()
-                progressStore.update(downloadId, chunk, expectedBytes ?: downloadedBytes, expectedBytes)
+                progressStore.updateChunkProgress(downloadId, chunk, expectedBytes ?: downloadedBytes, expectedBytes)
             }
         }
     }
 
-    fun ensureCapacity(destinationDir: File, expectedBytes: Long?) {
+    fun validateStorageCapacity(destinationDir: File, expectedBytes: Long?) {
         if (expectedBytes == null) {
             Log.i(Constants.TAG_FILE_MANAGER, "Storage check skipped: content length unknown")
             return
@@ -76,20 +76,20 @@ internal class FileManager(
 
         if (availableBytes < requiredBytes) {
             val message = "Insufficient storage space. " +
-                "Required: ${formatBytes(requiredBytes)}, " +
-                "Available: ${formatBytes(availableBytes)}"
+                "Required: ${formatBytesToHumanReadable(requiredBytes)}, " +
+                "Available: ${formatBytesToHumanReadable(availableBytes)}"
             Log.e(Constants.TAG_FILE_MANAGER, message)
             throw IllegalStateException(message)
         }
 
         Log.d(
             Constants.TAG_FILE_MANAGER,
-            "Storage check passed. Available: ${formatBytes(availableBytes)}, " +
-                "Required: ${formatBytes(requiredBytes)}"
+            "Storage check passed. Available: ${formatBytesToHumanReadable(availableBytes)}, " +
+                "Required: ${formatBytesToHumanReadable(requiredBytes)}"
         )
     }
 
-    private fun ensureDirectoryExists(dir: File?) {
+    private fun createDirectoryIfNotExists(dir: File?) {
         if (dir != null && !dir.exists()) {
             if (!dir.mkdirs() && !dir.exists()) {
                 val message = "Unable to create directory: ${dir.absolutePath}"
@@ -99,7 +99,7 @@ internal class FileManager(
         }
     }
 
-    private fun formatBytes(bytes: Long): String {
+    private fun formatBytesToHumanReadable(bytes: Long): String {
         val kb = bytes / 1024.0
         val mb = kb / 1024.0
         val gb = mb / 1024.0

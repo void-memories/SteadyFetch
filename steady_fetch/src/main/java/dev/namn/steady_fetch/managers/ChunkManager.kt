@@ -8,7 +8,7 @@ import dev.namn.steady_fetch.datamodels.DownloadRequest
 
 internal object ChunkManager {
 
-    fun calculateRanges(totalBytes: Long?, preferredChunkSizeBytes: Long?): List<LongRange>? {
+    fun calculateChunkByteRanges(totalBytes: Long?, preferredChunkSizeBytes: Long?): List<LongRange>? {
         val bytes: Long = totalBytes ?: run {
             Log.i(Constants.TAG_CHUNK_MANAGER, "Chunk calculation skipped: content length unknown")
             return null
@@ -39,14 +39,14 @@ internal object ChunkManager {
         return ranges
     }
 
-    fun createMetadata(
+    fun createChunkMetadata(
         downloadId: Long,
         request: DownloadRequest,
         totalBytes: Long?,
         chunkRanges: List<LongRange>?
     ): List<DownloadChunk> {
         if (chunkRanges.isNullOrEmpty()) {
-            val chunkName = generateChunkName(request.fileName, 1).first()
+            val chunkName = generateChunkFileName(request.fileName, 1).first()
             return listOf(
                 DownloadChunk(
                     downloadId = downloadId,
@@ -59,7 +59,7 @@ internal object ChunkManager {
             )
         }
 
-        val partNames = generateChunkName(request.fileName, chunkRanges.size)
+        val partNames = generateChunkFileName(request.fileName, chunkRanges.size)
         return partNames.mapIndexed { index, name ->
             val range = chunkRanges[index]
             val chunkSize = (range.last - range.first + 1).coerceAtLeast(0L)
@@ -74,23 +74,23 @@ internal object ChunkManager {
         }
     }
 
-    fun expectedBytesForChunk(chunk: DownloadChunk): Long? = when {
+    fun calculateExpectedBytesForChunk(chunk: DownloadChunk): Long? = when {
         chunk.totalBytes != null && chunk.totalBytes > 0 -> chunk.totalBytes
         chunk.startRange != null && chunk.endRange != null -> chunk.endRange - chunk.startRange + 1
         else -> null
     }
 
-    fun expectedBytesForProgress(progress: DownloadChunkWithProgress): Long? =
-        expectedBytesForChunk(progress.chunk)
+    fun calculateExpectedBytesFromProgress(progress: DownloadChunkWithProgress): Long? =
+        calculateExpectedBytesForChunk(progress.chunk)
 
-    fun overallProgress(chunks: List<DownloadChunkWithProgress>): Float {
+    fun calculateOverallDownloadProgress(chunks: List<DownloadChunkWithProgress>): Float {
         var expectedBytesSum = 0L
         var downloadedBytesSum = 0L
         var fallbackProgressSum = 0f
         var fallbackCount = 0
 
         chunks.forEach { chunkProgress ->
-            val expectedBytes = expectedBytesForProgress(chunkProgress)
+            val expectedBytes = calculateExpectedBytesFromProgress(chunkProgress)
             if (expectedBytes != null && expectedBytes > 0) {
                 expectedBytesSum += expectedBytes
                 downloadedBytesSum += chunkProgress.downloadedBytes.coerceAtMost(expectedBytes)
@@ -109,8 +109,8 @@ internal object ChunkManager {
         return computedProgress.coerceIn(0f, 1f)
     }
 
-    fun isChunkComplete(progress: DownloadChunkWithProgress): Boolean {
-        val expected = expectedBytesForProgress(progress)
+    fun isChunkDownloadComplete(progress: DownloadChunkWithProgress): Boolean {
+        val expected = calculateExpectedBytesFromProgress(progress)
         return when {
             expected != null && expected > 0 -> progress.downloadedBytes >= expected
             progress.progress >= 1f -> true
@@ -118,7 +118,7 @@ internal object ChunkManager {
         }
     }
 
-    private fun generateChunkName(name: String, numChunks: Int): List<String> {
+    private fun generateChunkFileName(name: String, numChunks: Int): List<String> {
         require(numChunks > 0) { "numChunks must be > 0" }
         require(name.isNotBlank()) { "name must not be blank" }
 

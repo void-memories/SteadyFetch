@@ -4,14 +4,14 @@ import dev.namn.steady_fetch.Constants
 import dev.namn.steady_fetch.datamodels.DownloadError
 import kotlinx.coroutines.CancellationException
 
-internal fun Throwable.toDownloadError(): DownloadError {
+internal fun Throwable.convertToDownloadError(): DownloadError {
     if (this is CancellationException) {
         return DownloadError(Constants.ERROR_CODE_CANCELLED, "Download cancelled")
     }
 
     val message = this.message?.takeUnless { it.isBlank() }
         ?: this::class.java.simpleName
-    val httpCode = extractHttpCode(message)
+    val httpCode = extractHttpStatusCodeFromMessage(message)
 
     val code = when {
         httpCode != null -> httpCode
@@ -22,7 +22,7 @@ internal fun Throwable.toDownloadError(): DownloadError {
     return DownloadError(code, message)
 }
 
-private fun extractHttpCode(message: String?): Int? {
+private fun extractHttpStatusCodeFromMessage(message: String?): Int? {
     if (message.isNullOrBlank()) return null
     val match = Constants.HTTP_CODE_REGEX.find(message)
     return match?.groupValues?.getOrNull(1)?.toIntOrNull()

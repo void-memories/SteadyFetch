@@ -22,14 +22,14 @@ class SteadyFetchControllerTest {
         steadyFetchController = SteadyFetchController(mockApplication)
     }
 
-    // Tests for calculateChunkRanges
+    // Tests for calculateDownloadChunkRanges
 
     @Test
-    fun calculateChunkRanges_perfectDivision_noRemainder() {
+    fun calculateDownloadChunkRanges_perfectDivision_noRemainder() {
         val totalBytes = 100L
         val chunkSizeBytes = 25L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -39,11 +39,11 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_withRemainder_lastChunkSmaller() {
+    fun calculateDownloadChunkRanges_withRemainder_lastChunkSmaller() {
         val totalBytes = 100L
         val chunkSizeBytes = 30L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -53,11 +53,11 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_smallFile_unitChunkSize() {
+    fun calculateDownloadChunkRanges_smallFile_unitChunkSize() {
         val totalBytes = 3L
         val chunkSizeBytes = 1L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -66,8 +66,8 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_singleByte_file() {
-        val chunks = steadyFetchController.calculateChunkRanges(1L, 4L)
+    fun calculateDownloadChunkRanges_singleByte_file() {
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(1L, 4L)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -75,10 +75,10 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_defaultChunkSizeWhenNull() {
+    fun calculateDownloadChunkRanges_defaultChunkSizeWhenNull() {
         val totalBytes = DEFAULT_CHUNK_SIZE_BYTES * 3
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, null)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, null)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -87,11 +87,11 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_preferredSizeRespectedForAllButLast() {
+    fun calculateDownloadChunkRanges_preferredSizeRespectedForAllButLast() {
         val totalBytes = 10_000L
         val chunkSizeBytes = 512L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -103,12 +103,12 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_zeroTotalBytes_throwsException() {
+    fun calculateDownloadChunkRanges_zeroTotalBytes_throwsException() {
         val totalBytes = 0L
         val chunkSizeBytes = 1024L
 
         try {
-            steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+            steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
             fail("Should have thrown IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             assertTrue("Error message should mention totalBytes", e.message?.contains("totalBytes") == true)
@@ -116,12 +116,12 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_negativeTotalBytes_throwsException() {
+    fun calculateDownloadChunkRanges_negativeTotalBytes_throwsException() {
         val totalBytes = -100L
         val chunkSizeBytes = 1024L
 
         try {
-            steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+            steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
             fail("Should have thrown IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             assertTrue("Error message should mention totalBytes", e.message?.contains("totalBytes") == true)
@@ -129,11 +129,11 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_chunksAreContiguous_noGaps() {
+    fun calculateDownloadChunkRanges_chunksAreContiguous_noGaps() {
         val totalBytes = 100L
         val chunkSizeBytes = 20L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -145,11 +145,11 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_chunksDoNotOverlap() {
+    fun calculateDownloadChunkRanges_chunksDoNotOverlap() {
         val totalBytes = 100L
         val chunkSizeBytes = 20L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!
@@ -168,11 +168,11 @@ class SteadyFetchControllerTest {
     }
 
     @Test
-    fun calculateChunkRanges_remainderDistribution_lastChunkSmaller() {
+    fun calculateDownloadChunkRanges_remainderDistribution_lastChunkSmaller() {
         val totalBytes = 13L
         val chunkSizeBytes = 4L
 
-        val chunks = steadyFetchController.calculateChunkRanges(totalBytes, chunkSizeBytes)
+        val chunks = steadyFetchController.calculateDownloadChunkRanges(totalBytes, chunkSizeBytes)
 
         assertNotNull(chunks)
         val nonNullChunks = chunks!!

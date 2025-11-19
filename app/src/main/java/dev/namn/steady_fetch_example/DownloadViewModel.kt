@@ -82,7 +82,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         monitorJob?.cancel()
 
         viewModelScope.launch {
-            val downloadId = SteadyFetch.queue(request)
+            val downloadId = SteadyFetch.queueDownload(request)
             if (downloadId == null) {
                 _uiState.update { it.copy(errorMessage = "Failed to queue download", isDownloading = false) }
                 return@launch
@@ -102,19 +102,19 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
             monitorJob = viewModelScope.launch {
                 while (true) {
-                    val response = SteadyFetch.query(downloadId)
+                    val response = SteadyFetch.queryDownloadStatus(downloadId)
                     val chunkProgressUi = response.chunks.mapIndexed { index, chunkProgress ->
                         ChunkProgressUi(
                             name = chunkProgress.chunk.name,
                             index = index,
                             downloadedBytes = chunkProgress.downloadedBytes,
-                            expectedBytes = ChunkManager.expectedBytesForProgress(chunkProgress),
+                            expectedBytes = ChunkManager.calculateExpectedBytesFromProgress(chunkProgress),
                             progress = chunkProgress.progress.coerceIn(0f, 1f)
                         )
                     }
 
                     val totalBytes = chunkProgressUi.firstNotNullOfOrNull { it.expectedBytes }
-                    val overallProgress = ChunkManager.overallProgress(response.chunks)
+                    val overallProgress = ChunkManager.calculateOverallDownloadProgress(response.chunks)
 
                     _uiState.update {
                         it.copy(

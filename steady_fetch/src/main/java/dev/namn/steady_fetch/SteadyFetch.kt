@@ -11,7 +11,7 @@ object SteadyFetch {
     private val isInitialized = AtomicBoolean(false)
 
     @Synchronized
-    fun init(application: Application) {
+    fun initialize(application: Application) {
         try {
             steadyFetchController = SteadyFetchController(application)
             isInitialized.set(true)
@@ -20,34 +20,34 @@ object SteadyFetch {
         }
     }
 
-    fun queue(request: DownloadRequest): Long? {
+    fun queueDownload(request: DownloadRequest): Long? {
         try {
-            initCheck()
-            return steadyFetchController!!.queue(request)
+            ensureInitialized()
+            return steadyFetchController!!.queueDownload(request)
         } catch (e: Exception) {
             throw RuntimeException("Failed to queue download: ${e.message}", e)
         }
     }
 
-    fun query(downloadId: Long): DownloadQueryResponse {
+    fun queryDownloadStatus(downloadId: Long): DownloadQueryResponse {
         try {
-            initCheck()
-            return steadyFetchController!!.query(downloadId)
+            ensureInitialized()
+            return steadyFetchController!!.queryDownloadStatus(downloadId)
         } catch (e: Exception) {
             throw RuntimeException("Failed to query download: ${e.message}", e)
         }
     }
 
-    suspend fun cancel(downloadId: Long): Boolean {
+    suspend fun cancelDownload(downloadId: Long): Boolean {
         try {
-            initCheck()
-            return steadyFetchController!!.cancel(downloadId)
+            ensureInitialized()
+            return steadyFetchController!!.cancelDownload(downloadId)
         } catch (e: Exception) {
             throw RuntimeException("Failed to cancel download: ${e.message}", e)
         }
     }
 
-    private fun initCheck() {
+    private fun ensureInitialized() {
         if (!isInitialized.get()) throw Exception("SteadyFetch SDK not initialized")
     }
 }

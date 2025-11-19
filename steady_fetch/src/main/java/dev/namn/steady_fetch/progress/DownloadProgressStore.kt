@@ -9,7 +9,7 @@ internal class DownloadProgressStore {
     private val progressStore =
         ConcurrentHashMap<Long, ConcurrentHashMap<String, DownloadChunkWithProgress>>()
 
-    fun initialize(downloadId: Long, chunks: List<DownloadChunk>) {
+    fun initializeDownloadProgress(downloadId: Long, chunks: List<DownloadChunk>) {
         val progressMap = ConcurrentHashMap<String, DownloadChunkWithProgress>()
         chunks.forEach { chunk ->
             progressMap[chunk.name] = DownloadChunkWithProgress(
@@ -21,7 +21,7 @@ internal class DownloadProgressStore {
         progressStore[downloadId] = progressMap
     }
 
-    fun update(downloadId: Long, chunk: DownloadChunk, downloadedBytes: Long, expectedBytes: Long?) {
+    fun updateChunkProgress(downloadId: Long, chunk: DownloadChunk, downloadedBytes: Long, expectedBytes: Long?) {
         val progress = if (expectedBytes != null && expectedBytes > 0) {
             (downloadedBytes.coerceAtMost(expectedBytes).toDouble() / expectedBytes).toFloat()
         } else {
@@ -37,10 +37,10 @@ internal class DownloadProgressStore {
         }
     }
 
-    fun snapshot(downloadId: Long): Map<String, DownloadChunkWithProgress> =
+    fun getProgressSnapshot(downloadId: Long): Map<String, DownloadChunkWithProgress> =
         progressStore[downloadId]?.toMap() ?: emptyMap()
 
-    fun clear(downloadId: Long) {
+    fun clearDownloadProgress(downloadId: Long) {
         progressStore.remove(downloadId)
     }
 }
