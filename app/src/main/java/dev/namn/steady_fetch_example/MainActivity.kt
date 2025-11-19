@@ -57,7 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.namn.steady_fetch.DownloadStatus
+import dev.namn.steady_fetch.datamodels.DownloadStatus
 import dev.namn.steady_fetch_example.ui.theme.SteadyFetchExampleTheme
 import java.text.NumberFormat
 import java.util.Locale

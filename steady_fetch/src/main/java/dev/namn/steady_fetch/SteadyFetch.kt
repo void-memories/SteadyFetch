@@ -2,6 +2,8 @@ package dev.namn.steady_fetch
 
 import android.app.Application
 import dev.namn.steady_fetch.core.SteadyFetchController
+import dev.namn.steady_fetch.datamodels.DownloadQueryResponse
+import dev.namn.steady_fetch.datamodels.DownloadRequest
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SteadyFetch {

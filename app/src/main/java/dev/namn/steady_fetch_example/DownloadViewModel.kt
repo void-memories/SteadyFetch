@@ -6,9 +6,9 @@ import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.namn.steady_fetch.SteadyFetch
-import dev.namn.steady_fetch.DownloadChunkWithProgress
-import dev.namn.steady_fetch.DownloadRequest
-import dev.namn.steady_fetch.DownloadStatus
+import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
+import dev.namn.steady_fetch.datamodels.DownloadRequest
+import dev.namn.steady_fetch.datamodels.DownloadStatus
 import dev.namn.steady_fetch.managers.ChunkManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

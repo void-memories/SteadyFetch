@@ -2,7 +2,8 @@ package dev.namn.steady_fetch.managers
 
 import android.os.StatFs
 import android.util.Log
-import dev.namn.steady_fetch.DownloadChunk
+import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.progress.DownloadProgressStore
 import okhttp3.ResponseBody
 import java.io.File
@@ -16,24 +17,24 @@ internal class FileManager(
         val alreadyExists = directory.exists()
         if (!alreadyExists && !directory.mkdirs()) {
             val message = "Unable to create download directory: ${directory.absolutePath}"
-            Log.e(TAG, message)
+            Log.e(Constants.TAG_FILE_MANAGER, message)
             throw IllegalStateException(message)
         }
 
         if (!directory.exists()) {
             val message = "Download directory unavailable after creation attempt: ${directory.absolutePath}"
-            Log.e(TAG, message)
+            Log.e(Constants.TAG_FILE_MANAGER, message)
             throw IllegalStateException(message)
         }
 
         if (!directory.isDirectory) {
             val message = "Download path is not a directory: ${directory.absolutePath}"
-            Log.e(TAG, message)
+            Log.e(Constants.TAG_FILE_MANAGER, message)
             throw IllegalStateException(message)
         }
 
         if (!alreadyExists) {
-            Log.d(TAG, "Created download directory at ${directory.absolutePath}")
+            Log.d(Constants.TAG_FILE_MANAGER, "Created download directory at ${directory.absolutePath}")
         }
     }
 
@@ -66,23 +67,23 @@ internal class FileManager(
 
     fun ensureCapacity(destinationDir: File, expectedBytes: Long?) {
         if (expectedBytes == null) {
-            Log.i(TAG, "Storage check skipped: content length unknown")
+            Log.i(Constants.TAG_FILE_MANAGER, "Storage check skipped: content length unknown")
             return
         }
 
         val availableBytes = StatFs(destinationDir.absolutePath).availableBytes
-        val requiredBytes = (expectedBytes * STORAGE_SAFETY_MARGIN_PERCENT).toLong()
+        val requiredBytes = (expectedBytes * Constants.STORAGE_SAFETY_MARGIN_PERCENT).toLong()
 
         if (availableBytes < requiredBytes) {
             val message = "Insufficient storage space. " +
                 "Required: ${formatBytes(requiredBytes)}, " +
                 "Available: ${formatBytes(availableBytes)}"
-            Log.e(TAG, message)
+            Log.e(Constants.TAG_FILE_MANAGER, message)
             throw IllegalStateException(message)
         }
 
         Log.d(
-            TAG,
+            Constants.TAG_FILE_MANAGER,
             "Storage check passed. Available: ${formatBytes(availableBytes)}, " +
                 "Required: ${formatBytes(requiredBytes)}"
         )
@@ -92,7 +93,7 @@ internal class FileManager(
         if (dir != null && !dir.exists()) {
             if (!dir.mkdirs() && !dir.exists()) {
                 val message = "Unable to create directory: ${dir.absolutePath}"
-                Log.e(TAG, message)
+                Log.e(Constants.TAG_FILE_MANAGER, message)
                 throw IOException(message)
             }
         }
@@ -111,8 +112,4 @@ internal class FileManager(
         }
     }
 
-    companion object {
-        private const val TAG = "FileManager"
-        private const val STORAGE_SAFETY_MARGIN_PERCENT = 1.1
-    }
 }

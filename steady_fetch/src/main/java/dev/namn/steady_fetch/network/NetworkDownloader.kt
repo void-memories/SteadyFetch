@@ -1,9 +1,10 @@
 package dev.namn.steady_fetch.network
 
 import android.util.Log
-import dev.namn.steady_fetch.DownloadChunk
-import dev.namn.steady_fetch.DownloadChunkWithProgress
-import dev.namn.steady_fetch.DownloadRequest
+import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.datamodels.DownloadChunk
+import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
+import dev.namn.steady_fetch.datamodels.DownloadRequest
 import dev.namn.steady_fetch.managers.ChunkManager
 import dev.namn.steady_fetch.progress.DownloadProgressStore
 import dev.namn.steady_fetch.managers.FileManager
@@ -30,13 +31,9 @@ internal class NetworkDownloader(
     private val fileManager: FileManager
 ) {
     companion object {
-        private const val TAG = "NetworkDownloader"
-        private const val DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L
-        private const val DEFAULT_READ_TIMEOUT_SECONDS = 10L
-
         private fun createOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(DEFAULT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(DEFAULT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .connectTimeout(Constants.DEFAULT_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(Constants.DEFAULT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
     }
 
@@ -64,7 +61,7 @@ internal class NetworkDownloader(
                     val contentLength = response.header("Content-Length")
                     contentLength?.toLongOrNull()
                 } else {
-                    Log.w(TAG, "Failed to get file size: HTTP ${response.code}")
+                    Log.w(Constants.TAG_NETWORK_DOWNLOADER, "Failed to get file size: HTTP ${response.code}")
                     null
                 }
             }
@@ -135,7 +132,7 @@ internal class NetworkDownloader(
 
             val expectedBytes = determineExpectedBytes(chunk, body.contentLength())
             fileManager.writeChunk(body, outputFile, chunk, expectedBytes, downloadId)
-            Log.d(TAG, "Downloaded chunk ${chunk.chunkIndex} (${chunk.name}) to ${outputFile.absolutePath}")
+            Log.d(Constants.TAG_NETWORK_DOWNLOADER, "Downloaded chunk ${chunk.chunkIndex} (${chunk.name}) to ${outputFile.absolutePath}")
         }
     }
 

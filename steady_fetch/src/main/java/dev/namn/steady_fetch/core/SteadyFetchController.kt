@@ -3,11 +3,14 @@ package dev.namn.steady_fetch.core
 import android.app.Application
 import android.os.SystemClock
 import android.util.Log
-import dev.namn.steady_fetch.DownloadChunkWithProgress
-import dev.namn.steady_fetch.DownloadError
-import dev.namn.steady_fetch.DownloadQueryResponse
-import dev.namn.steady_fetch.DownloadRequest
-import dev.namn.steady_fetch.DownloadStatus
+import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
+import dev.namn.steady_fetch.datamodels.DownloadError
+import dev.namn.steady_fetch.datamodels.DownloadQueryResponse
+import dev.namn.steady_fetch.datamodels.DownloadRequest
+import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.datamodels.PreparedDownload
+import dev.namn.steady_fetch.util.toDownloadError
 import dev.namn.steady_fetch.managers.ChunkManager
 import dev.namn.steady_fetch.network.NetworkDownloader
 import dev.namn.steady_fetch.progress.DownloadProgressStore
@@ -47,12 +50,12 @@ internal class SteadyFetchController(private val application: Application) {
     fun queue(request: DownloadRequest): Long? {
         val downloadId = SystemClock.elapsedRealtimeNanos()
 
-        if (request.maxParallelChunks > 30) {
-            throw Exception("maxParallelChunks must not exceed 30")
+        if (request.maxParallelChunks > Constants.MAX_PARALLEL_CHUNKS) {
+            throw Exception("maxParallelChunks must not exceed ${Constants.MAX_PARALLEL_CHUNKS}")
         }
 
         Log.d(
-            TAG,
+            Constants.TAG_STEADY_FETCH_CONTROLLER,
             "Queueing download ${request.fileName} with max ${request.maxParallelChunks} parallel chunks"
         )
 
@@ -66,7 +69,7 @@ internal class SteadyFetchController(private val application: Application) {
         val request = activeRequests[downloadId]
             ?: return DownloadQueryResponse(
                 status = DownloadStatus.FAILED,
-                error = DownloadError(404, "Download $downloadId not found"),
+                error = DownloadError(Constants.ERROR_CODE_NOT_FOUND, "Download $downloadId not found"),
                 chunks = emptyList(),
                 progress = 0f
             )
@@ -129,13 +132,13 @@ internal class SteadyFetchController(private val application: Application) {
         }
 
         downloadStatuses[downloadId] = DownloadStatus.FAILED
-        downloadErrors[downloadId] = DownloadError(499, "Download $downloadId cancelled by user")
+        downloadErrors[downloadId] = DownloadError(Constants.ERROR_CODE_CANCELLED, "Download $downloadId cancelled by user")
 
         job.cancel()
         job.cancelAndJoin()
         downloader.clearProgress(downloadId)
 
-        Log.i(TAG, "Cancelled download $downloadId")
+        Log.i(Constants.TAG_STEADY_FETCH_CONTROLLER, "Cancelled download $downloadId")
         return request != null
     }
 
@@ -190,7 +193,7 @@ internal class SteadyFetchController(private val application: Application) {
             val preparedRequest = preparationResult.request
             activeRequests[downloadId] = preparedRequest
             Log.d(
-                TAG,
+                Constants.TAG_STEADY_FETCH_CONTROLLER,
                 "Download $downloadId prepared with ${preparedRequest.chunks?.size ?: 0} chunk(s); expected size = ${preparationResult.totalBytes ?: "unknown"}"
             )
             registerStatusChange(downloadId, DownloadStatus.RUNNING)
@@ -237,61 +240,4 @@ internal class SteadyFetchController(private val application: Application) {
             }
         }
     }
-    companion object {
-        private const val TAG = "SteadyFetchController"
-        private val HTTP_CODE_REGEX = Regex("HTTP\\s+(\\d{3})")
-
-        private fun mapToDownloadError(throwable: Throwable): DownloadError {
-            if (throwable is CancellationException) {
-                return DownloadError(499, "Download cancelled")
-            }
-
-            val message = throwable.message?.takeUnless { it.isBlank() }
-                ?: throwable::class.java.simpleName
-            val httpCode = extractHttpCode(message)
-
-            val code = when {
-                httpCode != null -> httpCode
-                throwable is IllegalArgumentException || throwable is IllegalStateException -> 400
-                else -> 500
-            }
-
-            return DownloadError(code, message)
-        }
-
-        private fun extractHttpCode(message: String?): Int? {
-            if (message.isNullOrBlank()) return null
-            val match = HTTP_CODE_REGEX.find(message)
-            return match?.groupValues?.getOrNull(1)?.toIntOrNull()
-        }
-    }
 }
-
-private fun Throwable.toDownloadError(): DownloadError {
-    if (this is CancellationException) {
-        return DownloadError(499, "Download cancelled")
-    }
-
-    val message = this.message?.takeUnless { it.isBlank() }
-        ?: this::class.java.simpleName
-    val httpCode = extractHttpCode(message)
-
-    val code = when {
-        httpCode != null -> httpCode
-        this is IllegalArgumentException || this is IllegalStateException -> 400
-        else -> 500
-    }
-
-    return DownloadError(code, message)
-}
-
-private fun extractHttpCode(message: String?): Int? {
-    if (message.isNullOrBlank()) return null
-    val match = Regex("HTTP\\s+(\\d{3})").find(message)
-    return match?.groupValues?.getOrNull(1)?.toIntOrNull()
-}
-
-private data class PreparedDownload(
-    val request: DownloadRequest,
-    val totalBytes: Long?
-)

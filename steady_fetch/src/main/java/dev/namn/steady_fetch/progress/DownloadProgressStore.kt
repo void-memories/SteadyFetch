@@ -1,7 +1,7 @@
 package dev.namn.steady_fetch.progress
 
-import dev.namn.steady_fetch.DownloadChunk
-import dev.namn.steady_fetch.DownloadChunkWithProgress
+import dev.namn.steady_fetch.datamodels.DownloadChunk
+import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
 
 import java.util.concurrent.ConcurrentHashMap
 

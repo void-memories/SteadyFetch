@@ -1,17 +1,16 @@
 package dev.namn.steady_fetch.managers
 
 import android.util.Log
-import dev.namn.steady_fetch.DownloadChunk
-import dev.namn.steady_fetch.DownloadChunkWithProgress
-import dev.namn.steady_fetch.DownloadRequest
+import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.datamodels.DownloadChunk
+import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
+import dev.namn.steady_fetch.datamodels.DownloadRequest
 
 internal object ChunkManager {
-    private const val TAG = "ChunkManager"
-    internal const val DEFAULT_CHUNK_SIZE_BYTES: Long = 5L * 1024 * 1024
 
     fun calculateRanges(totalBytes: Long?, preferredChunkSizeBytes: Long?): List<LongRange>? {
         val bytes: Long = totalBytes ?: run {
-            Log.i(TAG, "Chunk calculation skipped: content length unknown")
+            Log.i(Constants.TAG_CHUNK_MANAGER, "Chunk calculation skipped: content length unknown")
             return null
         }
 
@@ -19,7 +18,7 @@ internal object ChunkManager {
 
         val preferredSize: Long? = preferredChunkSizeBytes
         val desiredChunkSize =
-            if (preferredSize != null && preferredSize >= 1L) preferredSize else DEFAULT_CHUNK_SIZE_BYTES
+            if (preferredSize != null && preferredSize >= 1L) preferredSize else Constants.DEFAULT_CHUNK_SIZE_BYTES
         val chunkSizeLong = desiredChunkSize
 
         val calculatedChunkCountRaw = bytes / chunkSizeLong
