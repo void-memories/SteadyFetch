@@ -28,11 +28,6 @@ import java.util.concurrent.ConcurrentHashMap
  *    else: delete parts + reconsilation
  */
 internal class SteadyFetchController(private val application: Application) {
-    companion object {
-        private const val TAG = "SteadyFetchController"
-        private val HTTP_CODE_REGEX = Regex("HTTP\\s+(\\d{3})")
-    }
-
     private val downloader = NetworkDownloader()
     private val activeRequests = ConcurrentHashMap<Long, DownloadRequest>()
     private val downloadJobs = ConcurrentHashMap<Long, Job>()
@@ -52,10 +47,7 @@ internal class SteadyFetchController(private val application: Application) {
             "Queueing download ${request.fileName} with max ${request.maxParallelChunks} parallel chunks"
         )
 
-        activeRequests[downloadId] = request.copy()
-        downloadStatuses[downloadId] = DownloadStatus.QUEUED
-        downloadErrors.remove(downloadId)
-
+        registerStatusChange(downloadId, DownloadStatus.QUEUED, request.copy(), )
         launchDownloadJob(downloadId, request)
 
         return downloadId
@@ -140,58 +132,7 @@ internal class SteadyFetchController(private val application: Application) {
 
     fun resumeInterruptedDownload() {}
 
-    private fun getCurrentTimeInNanos() = SystemClock.elapsedRealtimeNanos()
-
-    private fun validateStorageCapacity(destinationDir: File, expectedBytes: Long?) {
-        if (expectedBytes == null) {
-            Log.i(TAG, "Storage check skipped: content length unknown")
-            return
-        }
-
-        val availableBytes = StatFs(destinationDir.absolutePath).availableBytes
-        val requiredBytes = (expectedBytes * 1.1).toLong() // includes safety margin
-
-        if (availableBytes < requiredBytes) {
-            val message = "Insufficient storage space. " +
-                    "Required: ${formatByteCount(requiredBytes)}, " +
-                    "Available: ${formatByteCount(availableBytes)}"
-            Log.e(TAG, message)
-            throw IllegalStateException(message)
-        }
-
-        Log.d(
-            TAG,
-            "Storage check passed. Available: ${formatByteCount(availableBytes)}, " +
-                    "Required: ${formatByteCount(requiredBytes)}"
-        )
-    }
-
-    private fun prepareOutputDirectory(directory: File) {
-        val alreadyExists = directory.exists()
-        if (!alreadyExists && !directory.mkdirs()) {
-            val message = "Unable to create download directory: ${directory.absolutePath}"
-            Log.e(TAG, message)
-            throw IllegalStateException(message)
-        }
-
-        if (!directory.exists()) {
-            val message =
-                "Download directory unavailable after creation attempt: ${directory.absolutePath}"
-            Log.e(TAG, message)
-            throw IllegalStateException(message)
-        }
-
-        if (!directory.isDirectory) {
-            val message = "Download path is not a directory: ${directory.absolutePath}"
-            Log.e(TAG, message)
-            throw IllegalStateException(message)
-        }
-
-        if (!alreadyExists) {
-            Log.d(TAG, "Created download directory at ${directory.absolutePath}")
-        }
-    }
-
+    //todo: func looks hella sus to be w/ unused vars
     internal fun calculateChunkRanges(
         totalBytes: Long?,
         preferredChunkSizeBytes: Long?
@@ -204,7 +145,8 @@ internal class SteadyFetchController(private val application: Application) {
         require(bytes > 0) { "totalBytes must be > 0" }
 
         val preferredSize: Long? = preferredChunkSizeBytes
-        val desiredChunkSize = if (preferredSize != null && preferredSize >= 1L) preferredSize else DEFAULT_CHUNK_SIZE_BYTES
+        val desiredChunkSize =
+            if (preferredSize != null && preferredSize >= 1L) preferredSize else DEFAULT_CHUNK_SIZE_BYTES
         val chunkSizeLong = desiredChunkSize
 
         val calculatedChunkCountRaw = bytes / chunkSizeLong
@@ -212,7 +154,7 @@ internal class SteadyFetchController(private val application: Application) {
         val calculatedChunkCount = (calculatedChunkCountRaw + if (hasRemainder) 1L else 0L)
             .coerceAtLeast(1L)
         val chunkCount = calculatedChunkCount.toInt()
-        val chunkCountLong = chunkCount.toLong()
+        chunkCount.toLong()
 
         val ranges = mutableListOf<LongRange>()
         var start = 0L
@@ -226,6 +168,8 @@ internal class SteadyFetchController(private val application: Application) {
         return ranges
     }
 
+    //todo: why dis even required?
+    //todo: wtf, this is mad. why tf are the start and end ranges null, wtaf?
     private fun createChunkMetadata(
         downloadId: Long,
         request: DownloadRequest,
@@ -278,26 +222,16 @@ internal class SteadyFetchController(private val application: Application) {
         val parallelism = request.maxParallelChunks.coerceAtLeast(1)
         val job = downloadScope.launch {
             try {
-                val preparedRequest = prepareDownload(downloadId, request)
-                downloadStatuses[downloadId] = DownloadStatus.RUNNING
-                downloadErrors.remove(downloadId)
-
+                val preparedRequest = populateChunks(downloadId, request)
+                registerStatusChange(downloadId, DownloadStatus.RUNNING)
                 downloader.startDownload(downloadId, preparedRequest, parallelism)
-                downloadStatuses[downloadId] = DownloadStatus.SUCCESS
-                downloadErrors.remove(downloadId)
-                Log.d(TAG, "Download $downloadId completed")
-            } catch (cancelled: CancellationException) {
-                Log.i(TAG, "Download $downloadId cancelled")
-                downloadStatuses[downloadId] = DownloadStatus.FAILED
-                downloadErrors[downloadId] = DownloadError(499, "Download $downloadId cancelled")
-                throw cancelled
+                registerStatusChange(downloadId, DownloadStatus.SUCCESS)
             } catch (error: Exception) {
-                Log.e(TAG, "Download $downloadId failed", error)
-                downloadStatuses[downloadId] = DownloadStatus.FAILED
-                downloadErrors[downloadId] = mapToDownloadError(error)
+                registerStatusChange(downloadId, DownloadStatus.FAILED,null, error)
             }
         }
 
+        //todo: is this cancelling the scope asap?
         downloadJobs[downloadId]?.cancel()
         downloadJobs[downloadId] = job
 
@@ -306,7 +240,37 @@ internal class SteadyFetchController(private val application: Application) {
         }
     }
 
-    private suspend fun prepareDownload(
+    private fun registerStatusChange(
+        downloadId: Long, downloadStatus: DownloadStatus, request: DownloadRequest? = null, error:
+        Exception? = null
+    ) {
+        when (downloadStatus) {
+            DownloadStatus.QUEUED -> {
+                activeRequests[downloadId] = request!!
+                downloadStatuses[downloadId] = DownloadStatus.QUEUED
+                downloadErrors.remove(downloadId)
+            }
+
+            DownloadStatus.RUNNING -> {
+                downloadStatuses[downloadId] = DownloadStatus.RUNNING
+                downloadErrors.remove(downloadId)
+
+            }
+
+            DownloadStatus.SUCCESS -> {
+                downloadStatuses[downloadId] = DownloadStatus.SUCCESS
+                downloadErrors.remove(downloadId)
+            }
+
+            DownloadStatus.FAILED -> {
+                downloadStatuses[downloadId] = DownloadStatus.FAILED
+                downloadErrors[downloadId] = error!!.toDownloadError()
+            }
+        }
+    }
+
+    //todo: better name can be "populate chunks"?
+    private suspend fun populateChunks(
         downloadId: Long,
         request: DownloadRequest
     ): DownloadRequest {
@@ -332,29 +296,5 @@ internal class SteadyFetchController(private val application: Application) {
         )
 
         return preparedRequest
-    }
-
-    private fun mapToDownloadError(error: Throwable): DownloadError {
-        if (error is CancellationException) {
-            return DownloadError(499, "Download cancelled")
-        }
-
-        val message = error.message?.takeUnless { it.isBlank() }
-            ?: error::class.java.simpleName
-        val httpCode = extractHttpCode(message)
-
-        val code = when {
-            httpCode != null -> httpCode
-            error is IllegalArgumentException || error is IllegalStateException -> 400
-            else -> 500
-        }
-
-        return DownloadError(code, message)
-    }
-
-    private fun extractHttpCode(message: String?): Int? {
-        if (message.isNullOrBlank()) return null
-        val match = HTTP_CODE_REGEX.find(message)
-        return match?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
 }

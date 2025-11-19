@@ -215,6 +215,7 @@ internal class NetworkDownloader {
         else -> expectedBytesForChunk(chunk)
     }
 
+    //todo: can chunk prep and chunk range array caclcutaion collapse into one funciton
     private fun prepareChunksForDownload(request: DownloadRequest): List<DownloadChunk> {
         val chunks = request.chunks?.takeIf { it.isNotEmpty() }
         if (chunks != null) return chunks
@@ -231,6 +232,7 @@ internal class NetworkDownloader {
         return request.chunks ?: listOf(fallbackChunk)
     }
 
+    //todo: isn't this already done in the controller: remove this
     private fun ensureDirectoryExists(dir: File?) {
         if (dir != null && !dir.exists()) {
             if (!dir.mkdirs() && !dir.exists()) {

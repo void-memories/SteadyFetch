@@ -1,6 +1,13 @@
 package dev.namn.steady_fetch.models
 
+import android.os.StatFs
+import android.os.SystemClock
+import android.util.Log
+import java.io.File
+
 internal const val DEFAULT_CHUNK_SIZE_BYTES: Long = 5L * 1024 * 1024
+
+internal fun getCurrentTimeInNanos() = SystemClock.elapsedRealtimeNanos()
 
 internal fun formatByteCount(bytes: Long): String {
     val kb = bytes / 1024.0
@@ -76,3 +83,54 @@ internal fun isChunkComplete(progress: DownloadChunkWithProgress): Boolean {
     }
 }
 
+//TODO: only print at the exception catcher
+internal fun validateStorageCapacity(destinationDir: File, expectedBytes: Long?) {
+    if (expectedBytes == null) {
+        Log.i(TAG, "Storage check skipped: content length unknown")
+        return
+    }
+
+    val availableBytes = StatFs(destinationDir.absolutePath).availableBytes
+    val requiredBytes = (expectedBytes * 1.1).toLong() // includes safety margin
+
+    if (availableBytes < requiredBytes) {
+        val message = "Insufficient storage space. " +
+                "Required: ${formatByteCount(requiredBytes)}, " +
+                "Available: ${formatByteCount(availableBytes)}"
+        Log.e(TAG, message)
+        throw IllegalStateException(message)
+    }
+
+    Log.d(
+        TAG,
+        "Storage check passed. Available: ${formatByteCount(availableBytes)}, " +
+                "Required: ${formatByteCount(requiredBytes)}"
+    )
+}
+
+//todo: inefficient function
+internal fun prepareOutputDirectory(directory: File) {
+    val alreadyExists = directory.exists()
+    if (!alreadyExists && !directory.mkdirs()) {
+        val message = "Unable to create download directory: ${directory.absolutePath}"
+        Log.e(TAG, message)
+        throw IllegalStateException(message)
+    }
+
+    if (!directory.exists()) {
+        val message =
+            "Download directory unavailable after creation attempt: ${directory.absolutePath}"
+        Log.e(TAG, message)
+        throw IllegalStateException(message)
+    }
+
+    if (!directory.isDirectory) {
+        val message = "Download path is not a directory: ${directory.absolutePath}"
+        Log.e(TAG, message)
+        throw IllegalStateException(message)
+    }
+
+    if (!alreadyExists) {
+        Log.d(TAG, "Created download directory at ${directory.absolutePath}")
+    }
+}
