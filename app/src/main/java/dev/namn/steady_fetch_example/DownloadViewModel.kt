@@ -5,10 +5,11 @@ import android.net.Uri
 import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.namn.steady_fetch.models.DownloadChunkWithProgress
-import dev.namn.steady_fetch.models.DownloadRequest
-import dev.namn.steady_fetch.models.DownloadStatus
-import dev.namn.steady_fetch.models.SteadyFetch
+import dev.namn.steady_fetch.SteadyFetch
+import dev.namn.steady_fetch.DownloadChunkWithProgress
+import dev.namn.steady_fetch.DownloadRequest
+import dev.namn.steady_fetch.DownloadStatus
+import dev.namn.steady_fetch.managers.ChunkManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,13 +108,13 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
                             name = chunkProgress.chunk.name,
                             index = index,
                             downloadedBytes = chunkProgress.downloadedBytes,
-                            expectedBytes = calculateExpectedBytes(chunkProgress),
+                            expectedBytes = ChunkManager.expectedBytesForProgress(chunkProgress),
                             progress = chunkProgress.progress.coerceIn(0f, 1f)
                         )
                     }
 
                     val totalBytes = chunkProgressUi.firstNotNullOfOrNull { it.expectedBytes }
-                    val overallProgress = calculateOverallProgress(response.chunks)
+                    val overallProgress = ChunkManager.overallProgress(response.chunks)
 
                     _uiState.update {
                         it.copy(
@@ -150,46 +151,5 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         return Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() } ?: "download.bin"
     }
 
-    private fun calculateExpectedBytes(progress: DownloadChunkWithProgress): Long? {
-        val chunk = progress.chunk
-        val total = chunk.totalBytes
-        if (total != null && total > 0) return total
-
-        val start = chunk.startRange
-        val end = chunk.endRange
-        if (start != null && end != null && end >= start) {
-            return end - start + 1
-        }
-
-        return if (progress.downloadedBytes > 0) progress.downloadedBytes else null
-    }
-
-    private fun calculateOverallProgress(chunks: List<DownloadChunkWithProgress>): Float {
-        var expectedBytesSum = 0L
-        var downloadedBytesSum = 0L
-        var fallbackProgressSum = 0f
-        var fallbackCount = 0
-
-        chunks.forEach { chunkProgress ->
-            val expectedBytes = calculateExpectedBytes(chunkProgress)
-            if (expectedBytes != null && expectedBytes > 0) {
-                expectedBytesSum += expectedBytes
-                downloadedBytesSum += chunkProgress.downloadedBytes.coerceAtMost(expectedBytes)
-            } else if (chunkProgress.progress >= 0f) {
-                fallbackProgressSum += chunkProgress.progress
-                fallbackCount++
-            }
-        }
-
-        val computedProgress = when {
-            expectedBytesSum > 0 -> (downloadedBytesSum.toDouble() / expectedBytesSum).toFloat()
-            fallbackCount > 0 -> fallbackProgressSum / fallbackCount
-            else -> 0f
-        }
-
-        return computedProgress.coerceIn(0f, 1f)
-    }
-
     fun chunkSizeRange(): ClosedFloatingPointRange<Float> = MIN_CHUNK_SIZE_MB..MAX_CHUNK_SIZE_MB
 }
-

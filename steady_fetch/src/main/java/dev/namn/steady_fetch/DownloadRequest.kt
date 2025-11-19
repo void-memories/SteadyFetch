@@ -1,4 +1,4 @@
-package dev.namn.steady_fetch.models
+package dev.namn.steady_fetch
 
 import java.io.File
 

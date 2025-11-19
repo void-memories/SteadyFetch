@@ -1,6 +1,7 @@
-package dev.namn.steady_fetch.models
+package dev.namn.steady_fetch
 
 import android.app.Application
+import dev.namn.steady_fetch.core.SteadyFetchController
 import java.util.concurrent.atomic.AtomicBoolean
 
 //TODO: introduce try/catch
