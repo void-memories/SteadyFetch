@@ -1,0 +1,32 @@
+package dev.namn.steady_fetch.notifications
+
+import android.app.Application
+import android.content.Intent
+import androidx.core.content.ContextCompat
+import dev.namn.steady_fetch.datamodels.DownloadStatus
+
+internal class DownloadNotificationManager(
+    private val application: Application
+) {
+
+    fun start(downloadId: Long, fileName: String) {
+        val intent = Intent(application, DownloadForegroundService::class.java).apply {
+            action = DownloadForegroundService.ACTION_START
+            putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
+            putExtra(DownloadForegroundService.EXTRA_FILE_NAME, fileName)
+        }
+        ContextCompat.startForegroundService(application, intent)
+    }
+
+    fun update(downloadId: Long, fileName: String, progress: Float, status: DownloadStatus) {
+        val intent = Intent(application, DownloadForegroundService::class.java).apply {
+            action = DownloadForegroundService.ACTION_UPDATE
+            putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
+            putExtra(DownloadForegroundService.EXTRA_FILE_NAME, fileName)
+            putExtra(DownloadForegroundService.EXTRA_PROGRESS, progress)
+            putExtra(DownloadForegroundService.EXTRA_STATUS, status.name)
+        }
+        ContextCompat.startForegroundService(application, intent)
+    }
+}
+

@@ -8,9 +8,13 @@ import dev.namn.steady_fetch.Constants
 import dev.namn.steady_fetch.SteadyFetchCallback
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadMetadata
+import dev.namn.steady_fetch.datamodels.DownloadProgress
 import dev.namn.steady_fetch.datamodels.DownloadRequest
+import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.datamodels.DownloadError
 import dev.namn.steady_fetch.io.Networking
 import dev.namn.steady_fetch.managers.FileManager
+import dev.namn.steady_fetch.notifications.DownloadNotificationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +27,7 @@ internal class SteadyFetchController(private val application: Application) {
     private val networking = Networking(okHttpClient)
     private val chunkManager = ChunkManager()
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val notificationManager = DownloadNotificationManager(application)
 
     fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {
         val downloadId = SystemClock.elapsedRealtimeNanos()
@@ -32,6 +37,40 @@ internal class SteadyFetchController(private val application: Application) {
             Log.e(Constants.TAG, "maxParallelDownloads exceeded: ${request.maxParallelDownloads}")
             throw Exception("maxParallelDownloads must not exceed ${Constants.MAX_PARALLEL_CHUNKS}")
         }
+
+        val decoratedCallback = object : SteadyFetchCallback {
+            override fun onSuccess() {
+                notificationManager.update(
+                    downloadId,
+                    request.fileName,
+                    1f,
+                    DownloadStatus.SUCCESS
+                )
+                callback.onSuccess()
+            }
+
+            override fun onUpdate(progress: DownloadProgress) {
+                notificationManager.update(
+                    downloadId,
+                    request.fileName,
+                    progress.progress,
+                    progress.status
+                )
+                callback.onUpdate(progress)
+            }
+
+            override fun onError(error: DownloadError) {
+                notificationManager.update(
+                    downloadId,
+                    request.fileName,
+                    0f,
+                    DownloadStatus.FAILED
+                )
+                callback.onError(error)
+            }
+        }
+
+        notificationManager.start(downloadId, request.fileName)
 
         ioScope.launch {
             fileManager.createDirectoryIfNotExists(request.downloadDir)
@@ -57,7 +96,7 @@ internal class SteadyFetchController(private val application: Application) {
                 chunks = chunks
             )
 
-            networking.download(metadata, callback)
+            networking.download(metadata, decoratedCallback)
         }
         return downloadId
     }
