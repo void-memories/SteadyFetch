@@ -54,7 +54,9 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         val fileName = deriveFileName(url)
         val request = DownloadRequest(
             url = url,
-            headers = emptyMap(),
+            headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
+            ),
             maxParallelDownloads = 4,
             downloadDir = outputDir,
             fileName = fileName

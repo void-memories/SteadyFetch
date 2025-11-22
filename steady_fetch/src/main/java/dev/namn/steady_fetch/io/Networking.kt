@@ -101,9 +101,6 @@ class Networking(
                 headers.forEach { (key, value) ->
                     addHeader(key, value)
                 }
-                // Disable gzip encoding - some servers (like Hetzner) reject requests with gzip
-                removeHeader("Accept-Encoding")
-                addHeader("Accept-Encoding", "identity")
                 block()
             }
             .build()
@@ -327,7 +324,6 @@ class Networking(
     ): RemoteMetadata? {
         val request = buildRequest(url, headers) {
             addHeader("Range", "bytes=0-0")
-            addHeader("Accept-Encoding", "identity")
         }
 
         return try {
@@ -363,7 +359,6 @@ class Networking(
     ): Long? {
         val request = buildRequest(url, headers) {
             head()
-            addHeader("Accept-Encoding", "identity")
         }
 
         return try {

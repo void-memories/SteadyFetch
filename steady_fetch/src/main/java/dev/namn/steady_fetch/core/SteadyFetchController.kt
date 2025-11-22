@@ -16,21 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import okhttp3.Protocol
 
 internal class SteadyFetchController(private val application: Application) {
-    private val okHttpClient = OkHttpClient.Builder()
-        .protocols(listOf(Protocol.HTTP_1_1)) // Force HTTP/1.1 - some servers have issues with HTTP/2
-        .addInterceptor { chain ->
-            // Some servers block OkHttp's default User-Agent, use a browser-like one
-            val originalRequest = chain.request()
-            val newRequest = originalRequest.newBuilder()
-                .removeHeader("User-Agent")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
-                .build()
-            chain.proceed(newRequest)
-        }
-        .build()
+    private val okHttpClient = OkHttpClient()
     private val fileManager = FileManager()
     private val networking = Networking(okHttpClient)
     private val chunkManager = ChunkManager()

@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -19,9 +20,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
@@ -53,25 +54,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.namn.steady_fetch.datamodels.DownloadStatus
 import dev.namn.steady_fetch_example.ui.theme.SteadyFetchExampleTheme
 import kotlin.math.roundToInt
 
-private val BackgroundTopColor = Color(0xFF090B13)
-private val BackgroundBottomColor = Color(0xFF05060C)
-private val GridBaseColor = Color(0xFF161927)
-private val GridAccentColor = Color(0xFF586BFF)
-private val GridIdleColor = Color.White.copy(alpha = 0.04f)
-private val GridBorderColor = Color.White.copy(alpha = 0.12f)
-private val HudBackgroundColor = Color(0xFF101322)
-private val HudBorderColor = Color.White.copy(alpha = 0.18f)
-private val HudGlowColor = Color(0xFF586BFF)
-private val HudAccentColor = Color(0xFF7C8AFF)
-private val HudInputOverlay = Color.White.copy(alpha = 0.05f)
+// Classic Matrix theme
+private val TerminalBg = Color(0xFF000000) // Pure black
+private val MatrixGreen = Color(0xFF00FF41) // Classic Matrix green
+private val MatrixGreenBright = Color(0xFF39FF14) // Bright Matrix green
+private val MatrixGreenDim = Color(0xFF00AA00) // Dim Matrix green
+private val TerminalError = Color(0xFFFF0044) // Red
+private val TerminalBorder = Color(0xFF00FF41).copy(alpha = 0.4f)
 private val DemoDownloadLinks = listOf(
     "https://nbg1-speed.hetzner.com/100MB.bin",
     "https://speed.hetzner.de/100MB.bin",
@@ -126,34 +125,42 @@ private fun DownloadScreenBody(
 
     Box(
         modifier = modifier
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(BackgroundTopColor, BackgroundBottomColor)
-                )
-            )
+            .background(TerminalBg)
             .fillMaxSize()
             .navigationBarsPadding()
     ) {
-        ChunkMatrix(
-            chunks = uiState.chunkProgress,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 140.dp)
-        )
-
-        BottomHud(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            progress = progress,
-            status = status,
-            isDownloading = uiState.isDownloading,
-            onAddClick = { showUrlDialog = true }
-        )
+                .padding(16.dp)
+        ) {
+            // Terminal header
+            TerminalHeader()
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Chunk matrix
+            ChunkMatrix(
+                chunks = uiState.chunkProgress,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Terminal status bar
+            TerminalStatusBar(
+                progress = progress,
+                status = status,
+                isDownloading = uiState.isDownloading,
+                onAddClick = { showUrlDialog = true }
+            )
+        }
     }
 
     if (showUrlDialog) {
-        UrlInputDialog(
+        TerminalInputDialog(
             url = uiState.url,
             onUrlChange = onUrlChange,
             onDismiss = { showUrlDialog = false },
@@ -170,144 +177,28 @@ private fun DownloadScreenBody(
 
 @Composable
 private fun ChunkMatrix(chunks: List<ChunkProgressUi>, modifier: Modifier = Modifier) {
-    val minimumCells = 20
-    val actualItems = chunks.map { it as ChunkProgressUi? }
-    val displayItems: List<ChunkProgressUi?> = when {
-        actualItems.isEmpty() -> List(minimumCells) { null }
-        actualItems.size >= minimumCells -> actualItems
-        else -> actualItems + List(minimumCells - actualItems.size) { null }
-    }
-
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(10),
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        items(displayItems.size) { index ->
-            val chunk = displayItems[index]
-            ChunkSquare(
-                progress = chunk?.progress,
-                status = chunk?.status
-            )
+    if (chunks.isEmpty()) {
+        TerminalEmptyState(modifier = modifier)
+    } else {
+        val minimumCells = 20
+        val actualItems = chunks.map { it as ChunkProgressUi? }
+        val displayItems: List<ChunkProgressUi?> = when {
+            actualItems.size >= minimumCells -> actualItems
+            else -> actualItems + List(minimumCells - actualItems.size) { null }
         }
-    }
-}
 
-@Composable
-private fun ChunkSquare(
-    progress: Float?,
-    status: DownloadStatus? = null
-) {
-    val normalized = progress?.coerceIn(0f, 1f) ?: 0f
-    val animatedProgress by animateFloatAsState(
-        targetValue = normalized,
-        animationSpec = tween(durationMillis = 600),
-        label = "chunk-progress"
-    )
-
-    val hasProgress = progress != null
-    val baseColor = if (hasProgress) {
-        lerp(GridBaseColor, GridAccentColor, animatedProgress)
-    } else {
-        GridIdleColor
-    }
-
-    val backgroundModifier = if (hasProgress) {
-        Modifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    baseColor.copy(alpha = 0.95f),
-                    lerp(baseColor, Color.Black, 0.25f)
-                )
-            )
-        )
-    } else {
-        Modifier.background(baseColor)
-    }
-
-    val isRunning = status == DownloadStatus.RUNNING
-    val borderColor = if (isRunning) Color.White else GridBorderColor
-    val borderWidth = if (isRunning) 2.dp else 1.dp
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .then(backgroundModifier)
-            .border(BorderStroke(borderWidth, borderColor))
-    )
-}
-
-@Composable
-private fun BottomHud(
-    modifier: Modifier = Modifier,
-    progress: Float,
-    status: DownloadStatus,
-    isDownloading: Boolean,
-    onAddClick: () -> Unit
-) {
-    val progressPercent = (progress * 100f).coerceIn(0f, 100f).roundToInt()
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = HudBackgroundColor.copy(alpha = 0.92f),
-        shadowElevation = 8.dp
-    ) {
-        Column {
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                trackColor = Color.Transparent,
-                color = HudGlowColor
-            )
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = status.name.lowercase().replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.95f),
-                        fontWeight = FontWeight.Medium
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "$progressPercent%",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = HudAccentColor
-                        )
-                    }
-                }
-                
-                IconButton(
-                    onClick = onAddClick,
-                    enabled = !isDownloading,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isDownloading) 
-                                Color.White.copy(alpha = 0.08f) 
-                            else 
-                                HudGlowColor.copy(alpha = 0.85f)
-                        )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Download,
-                        contentDescription = "Add download",
-                        tint = if (isDownloading) 
-                            Color.White.copy(alpha = 0.35f) 
-                        else 
-                            Color.White,
-                        modifier = Modifier.size(20.dp)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(10),
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(displayItems.size) { index ->
+                val chunk = displayItems[index]
+                if (chunk != null) {
+                    TerminalChunk(
+                        progress = chunk.progress,
+                        status = chunk.status
                     )
                 }
             }
@@ -316,8 +207,237 @@ private fun BottomHud(
 }
 
 @Composable
+private fun TerminalChunk(
+    progress: Float,
+    status: DownloadStatus
+) {
+    val normalized = progress.coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = normalized,
+        animationSpec = tween(durationMillis = 300),
+        label = "chunk-progress"
+    )
+
+    val isRunning = status == DownloadStatus.RUNNING
+    val fillColor = if (isRunning) MatrixGreenBright else MatrixGreen
+    val borderColor = if (isRunning) MatrixGreenBright else MatrixGreen.copy(alpha = 0.6f)
+    val bgColor = if (isRunning) MatrixGreenBright.copy(alpha = 0.1f) else TerminalBg
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .background(bgColor)
+            .border(
+                BorderStroke(
+                    width = 2.dp,
+                    color = borderColor
+                )
+            )
+    ) {
+        val fillHeight = maxHeight * animatedProgress
+        
+        // 8-bit style solid fill from bottom
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(fillHeight)
+                .align(Alignment.BottomStart)
+                .background(fillColor)
+        )
+        
+        // Progress percentage text
+        Text(
+            text = if (animatedProgress > 0.01f) "${(animatedProgress * 100).toInt()}%" else "",
+            color = if (isRunning) MatrixGreenBright else MatrixGreen,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.Center)
+        )
+    }
+}
+
+@Composable
+private fun TerminalEmptyState(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(TerminalBg)
+                    .border(BorderStroke(2.dp, MatrixGreen))
+                    .padding(24.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MatrixGreen.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = "NO ACTIVE TRANSFERS",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MatrixGreen,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Click DOWNLOAD to initiate transfer",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MatrixGreenDim,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TerminalHeader() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(TerminalBg)
+            .border(BorderStroke(2.dp, MatrixGreen))
+            .padding(vertical = 12.dp, horizontal = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "STEADY_FETCH",
+                    color = MatrixGreenBright,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
+                Text(
+                    text = "v1.0 • DOWNLOAD SYSTEM",
+                    color = MatrixGreenDim,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .background(MatrixGreenBright.copy(alpha = 0.2f))
+                    .border(BorderStroke(1.dp, MatrixGreenBright))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "ONLINE",
+                    color = MatrixGreenBright,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TerminalStatusBar(
+    progress: Float,
+    status: DownloadStatus,
+    isDownloading: Boolean,
+    onAddClick: () -> Unit
+) {
+    val progressPercent = (progress * 100f).coerceIn(0f, 100f).roundToInt()
+    val progressBar = "█".repeat((progressPercent / 5).coerceAtMost(20))
+    val statusColor = when (status) {
+        DownloadStatus.RUNNING -> MatrixGreenBright
+        DownloadStatus.SUCCESS -> MatrixGreen
+        DownloadStatus.FAILED -> TerminalError
+        else -> MatrixGreenDim
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(TerminalBg)
+            .border(BorderStroke(2.dp, MatrixGreen))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "> status: ${status.name.lowercase()}",
+                    color = statusColor,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "> progress: [$progressBar] $progressPercent%",
+                    color = MatrixGreen,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            // Modern sleek download button
+            Box(
+                modifier = Modifier
+                    .clickable(enabled = !isDownloading, onClick = onAddClick)
+                    .background(
+                        if (isDownloading) 
+                            TerminalBg 
+                        else 
+                            MatrixGreenBright.copy(alpha = 0.15f)
+                    )
+                    .border(
+                        BorderStroke(
+                            width = 2.dp,
+                            color = if (isDownloading) MatrixGreenDim else MatrixGreenBright
+                        )
+                    )
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = "Download",
+                        tint = if (isDownloading) MatrixGreenDim else MatrixGreenBright,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "DOWNLOAD",
+                        color = if (isDownloading) MatrixGreenDim else MatrixGreenBright,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun UrlInputDialog(
+private fun TerminalInputDialog(
     url: String,
     onUrlChange: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -330,114 +450,86 @@ private fun UrlInputDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = HudBackgroundColor,
+        containerColor = TerminalBg,
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
-                    text = "Add download",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium
+                    text = "┌─────────────────────────────┐\n│  INITIATE DOWNLOAD SEQUENCE │\n└─────────────────────────────┘",
+                    color = MatrixGreenBright,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "> download --url",
+                    color = MatrixGreen,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
                 )
                 OutlinedTextField(
                     value = url,
                     onValueChange = onUrlChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Link", color = Color.White.copy(alpha = 0.7f)) },
                     singleLine = true,
                     colors = TextFieldDefaults.colors(
-                        focusedIndicatorColor = Color.White.copy(alpha = 0.4f),
-                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.2f),
-                        focusedLabelColor = Color.White.copy(alpha = 0.8f),
-                        cursorColor = Color.White,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White.copy(alpha = 0.9f),
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
+                        focusedIndicatorColor = MatrixGreenBright,
+                        unfocusedIndicatorColor = TerminalBorder,
+                        cursorColor = MatrixGreenBright,
+                        focusedTextColor = MatrixGreen,
+                        unfocusedTextColor = MatrixGreenDim,
+                        focusedContainerColor = TerminalBg,
+                        unfocusedContainerColor = TerminalBg
                     )
                 )
                 errorMessage?.let { error ->
                     Text(
-                        text = error,
+                        text = "> ERROR: $error",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                        color = TerminalError,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 if (suggestedUrls.isNotEmpty()) {
-                    SuggestedUrlList(
-                        urls = suggestedUrls,
-                        onUrlSelected = { selected -> onUrlChange(selected) }
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "> available sources:",
+                            color = MatrixGreenDim,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        suggestedUrls.forEach { suggestion ->
+                            Text(
+                                text = "  • $suggestion",
+                                color = MatrixGreen,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.clickable { onUrlChange(suggestion) },
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = canConfirm) {
-                Text("Send", color = if (canConfirm) Color.White else Color.White.copy(alpha = 0.5f))
+                Text(
+                    "> execute",
+                    color = if (canConfirm) MatrixGreenBright else MatrixGreenDim,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.White.copy(alpha = 0.7f))
+                Text(
+                    "> cancel",
+                    color = MatrixGreenDim,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     )
 }
 
-@Composable
-private fun SuggestedUrlList(
-    urls: List<String>,
-    onUrlSelected: (String) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "Try a sample link",
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White.copy(alpha = 0.8f)
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            urls.forEach { suggestion ->
-                SuggestedUrlItem(
-                    url = suggestion,
-                    onClick = { onUrlSelected(suggestion) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SuggestedUrlItem(
-    url: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = HudInputOverlay,
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, HudBorderColor.copy(alpha = 0.4f))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = url,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "Tap to use",
-                style = MaterialTheme.typography.labelSmall,
-                color = HudAccentColor
-            )
-        }
-    }
-}
 
 @Preview(showBackground = true, backgroundColor = 0xFF05070F)
 @Composable
