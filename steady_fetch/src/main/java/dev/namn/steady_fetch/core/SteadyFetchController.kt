@@ -93,7 +93,8 @@ internal class SteadyFetchController(private val application: Application) {
 
             val metadata = DownloadMetadata(
                 request = request,
-                chunks = chunks
+                chunks = chunks,
+                contentMd5 = remoteMetadata.contentMd5
             )
 
             networking.download(metadata, decoratedCallback)

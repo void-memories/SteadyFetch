@@ -31,7 +31,8 @@ internal class Networking(
 ) {
     data class RemoteMetadata(
         val contentLength: Long?,
-        val supportsRanges: Boolean
+        val supportsRanges: Boolean,
+        val contentMd5: String?
     )
 
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
@@ -42,18 +43,16 @@ internal class Networking(
             return probeResult
         }
 
-        val headSize = tryHeadForSize(url, headers)
-        if (headSize != null) {
-            return RemoteMetadata(
-                contentLength = headSize,
-                supportsRanges = false
-            )
+        val headResult = tryHeadForSize(url, headers)
+        if (headResult != null) {
+            return headResult
         }
 
         Log.w(Constants.TAG, "Unable to determine remote metadata for $url, proceeding without chunking")
         return RemoteMetadata(
             contentLength = null,
-            supportsRanges = false
+            supportsRanges = false,
+            contentMd5 = null
         )
     }
 
@@ -76,6 +75,7 @@ internal class Networking(
                     url = request.url,
                     headers = request.headers,
                     destination = destination,
+                    expectedMd5 = downloadMetadata.contentMd5,
                     callback = callback
                 )
             } else {
@@ -87,6 +87,7 @@ internal class Networking(
                     headers = request.headers,
                     downloadDir = request.downloadDir,
                     fileName = request.fileName,
+                    expectedMd5 = downloadMetadata.contentMd5,
                     callback = callback
                 )
             }
@@ -178,6 +179,7 @@ internal class Networking(
         url: String,
         headers: Map<String, String>,
         destination: File,
+        expectedMd5: String?,
         callback: SteadyFetchCallback
     ) {
         semaphore.withPermit {
@@ -190,6 +192,9 @@ internal class Networking(
 
             try {
                 downloadFile(url, headers, destination)
+                if (!fileManager.verifyMd5(destination, expectedMd5)) {
+                    throw IOException("MD5 verification failed for ${destination.name}")
+                }
 
                 callback.emitProgress(
                     status = DownloadStatus.SUCCESS,
@@ -222,6 +227,7 @@ internal class Networking(
         headers: Map<String, String>,
         downloadDir: File,
         fileName: String,
+        expectedMd5: String?,
         callback: SteadyFetchCallback
     ) = coroutineScope {
         val completionSignal = AtomicBoolean(false)
@@ -263,28 +269,7 @@ internal class Networking(
                         val allFinished = finished == chunks.size
 
                         if (allFinished) {
-                            try {
-                                fileManager.reconcileChunks(downloadDir, fileName, chunks)
-                                callback.emitProgress(DownloadStatus.SUCCESS, snapshot)
-                                if (completionSignal.compareAndSet(false, true)) {
-                                    Log.i(Constants.TAG, "All chunks completed")
-                                    callback.onSuccess()
-                                }
-                            } catch (mergeError: Exception) {
-                                Log.e(Constants.TAG, "Failed to reconcile chunks", mergeError)
-                                callback.emitProgress(
-                                    status = DownloadStatus.FAILED,
-                                    chunkProgress = snapshot
-                                )
-                                if (completionSignal.compareAndSet(false, true)) {
-                                    callback.onError(
-                                        DownloadError(
-                                            code = -1,
-                                            message = mergeError.message ?: "Failed to merge chunks"
-                                        )
-                                    )
-                                }
-                            }
+                            finalizeChunks(downloadDir, fileName, chunks, expectedMd5, snapshot, callback, completionSignal)
                         } else {
                             callback.emitProgress(DownloadStatus.RUNNING, snapshot)
                         }
@@ -307,6 +292,44 @@ internal class Networking(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private fun finalizeChunks(
+        downloadDir: File,
+        fileName: String,
+        chunks: List<DownloadChunk>,
+        expectedMd5: String?,
+        snapshot: List<DownloadChunkProgress>,
+        callback: SteadyFetchCallback,
+        completionSignal: AtomicBoolean
+    ) {
+        try {
+            fileManager.reconcileChunks(downloadDir, fileName, chunks)
+            val finalFile = File(downloadDir, fileName)
+            val md5Ok = fileManager.verifyMd5(finalFile, expectedMd5)
+            if (!md5Ok) {
+                throw IOException("MD5 verification failed for $fileName")
+            }
+            callback.emitProgress(DownloadStatus.SUCCESS, snapshot)
+            if (completionSignal.compareAndSet(false, true)) {
+                Log.i(Constants.TAG, "All chunks completed with verified checksum")
+                callback.onSuccess()
+            }
+        } catch (mergeError: Exception) {
+            Log.e(Constants.TAG, "Failed to finalize download", mergeError)
+            callback.emitProgress(
+                status = DownloadStatus.FAILED,
+                chunkProgress = snapshot
+            )
+            if (completionSignal.compareAndSet(false, true)) {
+                callback.onError(
+                    DownloadError(
+                        code = -1,
+                        message = mergeError.message ?: "Failed to finalize download"
+                    )
+                )
             }
         }
     }
@@ -360,7 +383,8 @@ internal class Networking(
                     Constants.TAG,
                     "Range probe for $url -> supports=$supportsRanges length=$contentLength status=${response.code}"
                 )
-                RemoteMetadata(contentLength, supportsRanges)
+                val contentMd5 = response.header("Content-MD5")
+                RemoteMetadata(contentLength, supportsRanges, contentMd5)
             }
         } catch (e: IOException) {
             Log.w(
@@ -374,7 +398,7 @@ internal class Networking(
     private fun tryHeadForSize(
         url: String,
         headers: Map<String, String>
-    ): Long? {
+    ): RemoteMetadata? {
         val request = buildRequest(url, headers) {
             head()
         }
@@ -383,8 +407,13 @@ internal class Networking(
             okHttpClient.newCall(request).execute().use { response ->
                 response.body?.close()
                 val size = response.header("Content-Length")?.toLongOrNull()
-                Log.d(Constants.TAG, "HEAD fallback content-length for $url -> $size")
-                size
+                val md5 = response.header("Content-MD5")
+                Log.d(Constants.TAG, "HEAD fallback content-length for $url -> $size md5=$md5")
+                RemoteMetadata(
+                    contentLength = size,
+                    supportsRanges = false,
+                    contentMd5 = md5
+                )
             }
         } catch (e: IOException) {
             Log.w(

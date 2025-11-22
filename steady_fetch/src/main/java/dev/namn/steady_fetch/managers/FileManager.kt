@@ -3,10 +3,12 @@ package dev.namn.steady_fetch.managers
 import android.os.StatFs
 import android.util.Log
 import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.datamodels.DownloadChunk
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.security.MessageDigest
 
 internal class FileManager {
     fun validateStorageCapacity(destinationDir: File, expectedBytes: Long) {
@@ -41,7 +43,7 @@ internal class FileManager {
     fun reconcileChunks(
         downloadDir: File,
         fileName: String,
-        chunks: List<dev.namn.steady_fetch.datamodels.DownloadChunk>
+        chunks: List<DownloadChunk>
     ) {
         if (chunks.isEmpty()) return
 
@@ -82,6 +84,25 @@ internal class FileManager {
             tempFile.delete()
             throw e
         }
+    }
+
+    fun verifyMd5(target: File, expectedMd5: String?): Boolean {
+        if (expectedMd5.isNullOrBlank()) return true
+        val digest = MessageDigest.getInstance("MD5")
+        FileInputStream(target).use { input ->
+            val buffer = ByteArray(Constants.DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        val matches = actual.equals(expectedMd5, ignoreCase = true)
+        if (!matches) {
+            Log.e(Constants.TAG, "MD5 mismatch for ${target.name}. expected=$expectedMd5 actual=$actual")
+        }
+        return matches
     }
 
     private fun formatBytesToHumanReadable(bytes: Long): String {

@@ -12,7 +12,8 @@ data class DownloadRequest(
 
 data class DownloadMetadata(
     val request: DownloadRequest,
-    val chunks: List<DownloadChunk>?
+    val chunks: List<DownloadChunk>?,
+    val contentMd5: String? = null,
 )
 
 data class DownloadChunk(
