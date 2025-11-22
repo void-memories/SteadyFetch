@@ -327,19 +327,19 @@ private fun TerminalHeader() {
     LaunchedEffect(Unit) {
         while (true) {
             glowIndex = (glowIndex + 1) % 2
-            delay(240)
+            delay(520)
         }
     }
 
     LaunchedEffect(Unit) {
         while (true) {
             cursorOn = !cursorOn
-            delay(320)
+            delay(640)
         }
     }
 
-    val glowAlpha = if (glowIndex == 0) 0.25f else 0.6f
-    val cursorAlpha = if (cursorOn) 1f else 0.2f
+    val glowAlpha = if (glowIndex == 0) 0.35f else 0.45f
+    val cursorAlpha = if (cursorOn) 0.9f else 0.45f
 
     Box(
         modifier = Modifier
@@ -491,11 +491,11 @@ private fun StatusLoaderButton(
     LaunchedEffect(Unit) {
         while (true) {
             loaderStep = (loaderStep + 1) % 8
-            delay(140)
+            delay(280)
         }
     }
-    val loaderPulse = if (loaderStep % 2 == 0) 0.08f else 0.18f
-    val shimmerOffset = (loaderStep % 4) / 4f
+    val loaderPulse = if (loaderStep % 2 == 0) 0.1f else 0.16f
+    val shimmerOffset = (loaderStep % 4) / 5f
 
     Box(
         modifier = modifier
@@ -520,7 +520,7 @@ private fun StatusLoaderButton(
                     .fillMaxWidth(clampedProgress)
                     .background(MatrixGreenBright.copy(alpha = loaderPulse + 0.25f))
             )
-            val shimmerWidth = 0.22f
+            val shimmerWidth = 0.15f
             val shimmerStart = shimmerOffset
             val shimmerEnd = (shimmerStart + shimmerWidth).coerceAtMost(1f)
             if (shimmerEnd > shimmerStart) {
@@ -565,10 +565,10 @@ private fun DownloadButton(
     LaunchedEffect(Unit) {
         while (true) {
             brightFlash = !brightFlash
-            delay(260)
+            delay(520)
         }
     }
-    val idlePulse = if (brightFlash) 0.22f else 0.12f
+    val idlePulse = if (brightFlash) 0.18f else 0.1f
 
     Box(
         modifier = modifier
@@ -664,12 +664,28 @@ private fun TerminalInputDialog(
                             fontWeight = FontWeight.Bold
                         )
                         suggestedUrls.forEach { suggestion ->
+                            val isSelected = suggestion == url
+                            val tag = if (isSelected) "[X]" else "[ ]"
                             Text(
-                                text = "  • $suggestion",
-                                color = MatrixGreen,
+                                text = "$tag $suggestion",
+                                color = if (isSelected) MatrixGreenBright else MatrixGreen,
                                 style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.clickable { onUrlChange(suggestion) },
-                                fontWeight = FontWeight.Bold
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        color = if (isSelected) MatrixGreenBright.copy(alpha = 0.15f) else Color.Transparent
+                                    )
+                                    .border(
+                                        BorderStroke(
+                                            width = 1.dp,
+                                            color = if (isSelected) MatrixGreenBright else Color.Transparent
+                                        )
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .clickable { onUrlChange(suggestion) },
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -707,7 +723,7 @@ private fun VintageScanlineOverlay(modifier: Modifier = Modifier) {
     LaunchedEffect(lineHeightPx, spacingPx) {
         while (true) {
             offsetPx = (offsetPx + lineHeightPx) % spacingPx
-            delay(90)
+            delay(160)
         }
     }
 
@@ -715,7 +731,7 @@ private fun VintageScanlineOverlay(modifier: Modifier = Modifier) {
         var y = -offsetPx
         while (y < size.height) {
             drawRect(
-                color = MatrixGreen.copy(alpha = 0.04f),
+                color = MatrixGreen.copy(alpha = 0.03f),
                 topLeft = Offset(0f, y),
                 size = Size(width = size.width, height = lineHeightPx)
             )
