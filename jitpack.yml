@@ -1,0 +1,9 @@
+jdk:
+  - openjdk17
+
+before_install:
+  - chmod +x gradlew
+
+install:
+  - ./gradlew --no-daemon --stacktrace clean steady_fetch:assembleRelease steady_fetch:publishReleasePublicationToMavenLocal
+
