@@ -18,7 +18,6 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.ResponseBody
 import java.util.concurrent.TimeUnit
 
 internal class NetworkDownloader(
@@ -70,7 +69,7 @@ internal class NetworkDownloader(
             val jobs = chunkList.map { chunk ->
                 launch {
                     semaphore.withPermit {
-                        val targetFile = File(request.outputDir, chunk.name)
+                        val targetFile = File(request.downloadDir, chunk.name)
                         downloadChunkAndWriteToFile(
                             url = request.url,
                             headers = request.headers,

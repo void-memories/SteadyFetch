@@ -1,6 +1,7 @@
 package dev.namn.steady_fetch
 
 internal object Constants {
+    const val TAG = "STEADY_FETCH"
     const val TAG_STEADY_FETCH_CONTROLLER = "SteadyFetchController"
     const val TAG_NETWORK_DOWNLOADER = "NetworkDownloader"
     const val TAG_CHUNK_MANAGER = "ChunkManager"
@@ -10,7 +11,7 @@ internal object Constants {
     const val DEFAULT_READ_TIMEOUT_SECONDS = 10L
 
     const val DEFAULT_CHUNK_SIZE_BYTES: Long = 5L * 1024 * 1024
-    const val MAX_PARALLEL_CHUNKS = 30
+    const val MAX_PARALLEL_CHUNKS = 25
 
     const val STORAGE_SAFETY_MARGIN_PERCENT = 1.1
 
@@ -21,4 +22,3 @@ internal object Constants {
 
     val HTTP_CODE_REGEX = Regex("HTTP\\s+(\\d{3})")
 }
-

@@ -5,22 +5,18 @@ import java.io.File
 data class DownloadRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
-    val maxParallelChunks: Int = 4,
-    val preferredChunkSizeBytes: Long? = null,
-    val outputDir: File,
+    val maxParallelDownloads: Int = 4,
+    val downloadDir: File,
     val fileName: String,
-    var chunks: List<DownloadChunk>?
 )
 
-data class DownloadQueryResponse(
-    val status: DownloadStatus,
-    val error: DownloadError?,
-    val chunks: List<DownloadChunkWithProgress>,
-    val progress: Float
-)
-
-internal data class PreparedDownload(
+data class DownloadMetadata(
     val request: DownloadRequest,
-    val totalBytes: Long?
+    val chunks: List<DownloadChunk>?
 )
 
+data class DownloadChunk(
+    val name: String,
+    val start: Long,
+    val end: Long,
+)

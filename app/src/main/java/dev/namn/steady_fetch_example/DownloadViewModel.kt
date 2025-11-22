@@ -6,7 +6,6 @@ import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.namn.steady_fetch.SteadyFetch
-import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
 import dev.namn.steady_fetch.datamodels.DownloadRequest
 import dev.namn.steady_fetch.datamodels.DownloadStatus
 import dev.namn.steady_fetch.managers.ChunkManager
@@ -74,7 +73,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             headers = emptyMap(),
             maxParallelChunks = 4,
             preferredChunkSizeBytes = chunkSizeBytes,
-            outputDir = outputDir,
+            downloadDir = outputDir,
             fileName = fileName,
             chunks = null
         )
