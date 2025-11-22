@@ -1,6 +1,6 @@
 # SteadyFetch
 
-[![Release Check](https://img.shields.io/github/actions/workflow/status/void-memories/SteadyFetch/ci.yml?label=Release%20Check&logo=github)](https://github.com/void-memories/SteadyFetch/actions/workflows/ci.yml)
+[![Unit Tests](https://img.shields.io/github/actions/workflow/status/void-memories/SteadyFetch/unit-tests.yml?label=Unit%20Tests&logo=github)](https://github.com/void-memories/SteadyFetch/actions/workflows/unit-tests.yml)
 [![JitPack](https://jitpack.io/v/void-memories/SteadyFetch.svg)](https://jitpack.io/#void-memories/SteadyFetch)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin)](https://kotlinlang.org/)
 [![Android API](https://img.shields.io/badge/API-28%2B-3DDC84?logo=android)](#)

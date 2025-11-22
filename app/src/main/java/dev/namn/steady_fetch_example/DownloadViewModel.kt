@@ -57,7 +57,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
             ),
-            maxParallelDownloads = 8,
+            maxParallelDownloads = 4,
             downloadDir = outputDir,
             fileName = fileName
         )
