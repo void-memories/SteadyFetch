@@ -19,6 +19,12 @@ SteadyFetch is a Kotlin-based Android SDK that turns downloads into an orchestra
 
 ---
 
+## 📡 Demo
+
+https://github.com/user-attachments/assets/f14753d8-9445-4ed9-ba48-8abceb415216
+
+---
+
 ## 📡 Index
 
 1. [Feature Signal](#-feature-signal)
