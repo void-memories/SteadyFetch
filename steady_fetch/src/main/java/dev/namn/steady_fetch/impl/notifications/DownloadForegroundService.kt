@@ -1,13 +1,18 @@
 package dev.namn.steady_fetch.impl.notifications
 
 import android.R
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
+import androidx.core.content.ContextCompat
+import android.Manifest
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
@@ -34,10 +39,15 @@ internal class DownloadForegroundService : Service() {
 
         when (intent.action) {
             ACTION_START -> {
-                startForeground(notificationId, notification)
+                if (canPostNotifications()) {
+                    startForeground(notificationId, notification)
+                } else {
+                    Log.w(TAG, "POST_NOTIFICATIONS permission missing; foreground start aborted")
+                    stopSelf()
+                }
             }
             ACTION_UPDATE -> {
-                NotificationManagerCompat.from(this).notify(notificationId, notification)
+                notifySafely(notificationId, notification)
                 if (status == DownloadStatus.SUCCESS || status == DownloadStatus.FAILED) {
                     stopAndRemove(notificationId)
                 }
@@ -110,8 +120,40 @@ internal class DownloadForegroundService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
-        NotificationManagerCompat.from(this).cancel(notificationId)
+        cancelSafely(notificationId)
         stopSelf()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun notifySafely(notificationId: Int, notification: Notification) {
+        if (!canPostNotifications()) {
+            Log.w(TAG, "POST_NOTIFICATIONS permission missing; skipping notify for $notificationId")
+            return
+        }
+        try {
+            NotificationManagerCompat.from(this).notify(notificationId, notification)
+        } catch (securityException: SecurityException) {
+            Log.w(TAG, "Unable to post notification $notificationId", securityException)
+        }
+    }
+
+    private fun cancelSafely(notificationId: Int) {
+        try {
+            NotificationManagerCompat.from(this).cancel(notificationId)
+        } catch (securityException: SecurityException) {
+            Log.w(TAG, "Unable to cancel notification $notificationId", securityException)
+        }
+    }
+
+    private fun canPostNotifications(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return true
+        }
+        val permissionGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        return permissionGranted && NotificationManagerCompat.from(this).areNotificationsEnabled()
     }
 
     private fun notificationIdFor(downloadId: Long): Int {
@@ -122,6 +164,7 @@ internal class DownloadForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "steady_fetch_downloads"
         private const val DEFAULT_NOTIFICATION_ID = 0x53_45_44 // "SED" hex
+        private const val TAG = "SteadyFetchNotification"
 
         const val ACTION_START = "dev.namn.steady_fetch.action.START"
         const val ACTION_UPDATE = "dev.namn.steady_fetch.action.UPDATE"
