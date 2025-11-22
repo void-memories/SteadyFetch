@@ -1,7 +1,6 @@
 package dev.namn.steady_fetch.impl.controllers
 
 import ChunkManager
-import android.app.Application
 import android.os.SystemClock
 import android.util.Log
 import dev.namn.steady_fetch.impl.uilts.Constants
@@ -17,20 +16,17 @@ import dev.namn.steady_fetch.impl.managers.FileManager
 import dev.namn.steady_fetch.impl.notifications.DownloadNotificationManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 import java.util.concurrent.ConcurrentHashMap
 
-internal class SteadyFetchController(private val application: Application) {
-    private val okHttpClient = OkHttpClient()
-    private val fileManager = FileManager()
-    private val networking = Networking(okHttpClient, fileManager)
-    private val chunkManager = ChunkManager()
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val notificationManager = DownloadNotificationManager(application)
+internal class SteadyFetchController(
+    private val fileManager: FileManager,
+    private val networking: Networking,
+    private val chunkManager: ChunkManager,
+    private val notificationManager: DownloadNotificationManager,
+    private val ioScope: CoroutineScope,
+) {
     private val activeJobs = ConcurrentHashMap<Long, Job>()
 
     fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {

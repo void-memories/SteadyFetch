@@ -4,11 +4,13 @@ import android.app.Application
 import android.util.Log
 import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
 import dev.namn.steady_fetch.impl.controllers.SteadyFetchController
+import dev.namn.steady_fetch.impl.di.DependencyContainer
 import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
 import dev.namn.steady_fetch.impl.uilts.Constants
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SteadyFetch {
+    private var dependencyContainer: DependencyContainer? = null
     private var steadyFetchController: SteadyFetchController? = null
     private val isInitialized = AtomicBoolean(false)
 
@@ -16,7 +18,9 @@ object SteadyFetch {
     fun initialize(application: Application) {
         try {
             Log.i(Constants.TAG, "Initializing SteadyFetch")
-            steadyFetchController = SteadyFetchController(application)
+            val container = DependencyContainer.getInstance(application)
+            dependencyContainer = container
+            steadyFetchController = container.getSteadyFetchController()
             isInitialized.set(true)
             Log.i(Constants.TAG, "SteadyFetch initialized")
         } catch (e: Exception) {
