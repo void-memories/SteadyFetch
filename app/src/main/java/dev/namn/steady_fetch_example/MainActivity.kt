@@ -13,6 +13,10 @@ import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
@@ -82,7 +86,7 @@ private val TerminalBg = Color(0xFF000000) // Pure black
 private val MatrixGreen = Color(0xFF00FF41) // Classic Matrix green
 private val MatrixGreenBright = Color(0xFF39FF14) // Bright Matrix green
 private val MatrixGreenDim = Color(0xFF00AA00) // Dim Matrix green
-private val MatrixAccent = Color(0xFF40FFD5) // Teal accent for highlights
+private val MatrixAccent = Color(0xFFFFD700) // Vivid yellow accent for running state
 private val TerminalError = Color(0xFFFF0044) // Red
 private val TerminalBorder = Color(0xFF00FF41).copy(alpha = 0.4f)
 private val ButtonMinHeight = 56.dp
@@ -251,9 +255,29 @@ private fun TerminalChunk(
     val blockyProgress = (normalized * 8f).roundToInt() / 8f
 
     val isRunning = status == DownloadStatus.RUNNING
+    val effectsTransition = rememberInfiniteTransition(label = "chunk-effects")
+    val pulseValue by effectsTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "chunk-border-pulse"
+    )
+    val shimmerShift by effectsTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "chunk-shimmer-shift"
+    )
+
     val fillColor = if (isRunning) MatrixGreenBright else MatrixGreen
-    val borderColor = if (isRunning) MatrixAccent else MatrixGreen.copy(alpha = 0.6f)
-    val bgColor = if (isRunning) MatrixAccent.copy(alpha = 0.08f) else TerminalBg
+    val borderColor = if (isRunning) MatrixGreenBright else MatrixGreen.copy(alpha = 0.6f)
+    val bgColor = if (isRunning) MatrixAccent.copy(alpha = 0.04f + 0.06f * pulseValue) else TerminalBg
 
     BoxWithConstraints(
         modifier = Modifier
@@ -278,10 +302,29 @@ private fun TerminalChunk(
                 .background(fillColor)
         )
         
+        if (isRunning) {
+            Canvas(
+                modifier = Modifier.matchParentSize()
+            ) {
+                val stripeWidth = size.width / 5f
+                val shift = shimmerShift * stripeWidth
+                var x = -stripeWidth + shift
+                val stripeColor = MatrixAccent.copy(alpha = 0.25f)
+                while (x < size.width + stripeWidth) {
+                    drawRect(
+                        color = stripeColor,
+                        topLeft = Offset(x, 0f),
+                        size = Size(stripeWidth / 2f, size.height)
+                    )
+                    x += stripeWidth
+                }
+            }
+        }
+
         // Progress percentage text
         Text(
             text = if (blockyProgress > 0.01f) "${(blockyProgress * 100).toInt()}%" else "",
-            color = if (isRunning) MatrixAccent else MatrixGreen,
+            color = MatrixGreenBright,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.Center)
