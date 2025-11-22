@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
@@ -147,16 +148,19 @@ private fun DownloadScreenBody(
                     .fillMaxWidth()
             )
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Terminal status bar
-            TerminalStatusBar(
-                progress = progress,
-                status = status,
-                isDownloading = uiState.isDownloading,
-                onAddClick = { showUrlDialog = true }
-            )
         }
+        
+        // Standalone download button/status counter at bottom
+        DownloadButtonOrStatus(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(16.dp),
+            progress = progress,
+            status = status,
+            isDownloading = uiState.isDownloading,
+            onAddClick = { showUrlDialog = true }
+        )
     }
 
     if (showUrlDialog) {
@@ -354,8 +358,7 @@ private fun TerminalHeader() {
 private fun TerminalStatusBar(
     progress: Float,
     status: DownloadStatus,
-    isDownloading: Boolean,
-    onAddClick: () -> Unit
+    isDownloading: Boolean
 ) {
     val progressPercent = (progress * 100f).coerceIn(0f, 100f).roundToInt()
     val progressBar = "█".repeat((progressPercent / 5).coerceAtMost(20))
@@ -373,63 +376,149 @@ private fun TerminalStatusBar(
             .border(BorderStroke(2.dp, MatrixGreen))
             .padding(16.dp)
     ) {
+        Text(
+            text = "> status: ${status.name.lowercase()}",
+            color = statusColor,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "> progress: [$progressBar] $progressPercent%",
+            color = MatrixGreen,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun DownloadButtonOrStatus(
+    modifier: Modifier = Modifier,
+    progress: Float,
+    status: DownloadStatus,
+    isDownloading: Boolean,
+    onAddClick: () -> Unit
+) {
+    if (isDownloading) {
+        // Show status counter when downloading
+        StatusLoaderButton(
+            modifier = modifier,
+            progress = progress,
+            status = status
+        )
+    } else {
+        // Show download button when not downloading
+        DownloadButton(
+            modifier = modifier,
+            onAddClick = onAddClick
+        )
+    }
+}
+
+@Composable
+private fun StatusLoaderButton(
+    modifier: Modifier = Modifier,
+    progress: Float,
+    status: DownloadStatus
+) {
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    val progressPercent = (clampedProgress * 100f).roundToInt()
+    val statusText = when (status) {
+        DownloadStatus.RUNNING -> "transferring packets"
+        DownloadStatus.QUEUED -> "queued for dispatch"
+        DownloadStatus.SUCCESS -> "download complete"
+        DownloadStatus.FAILED -> "transmission failed"
+    }
+    val statusColor = when (status) {
+        DownloadStatus.RUNNING -> MatrixGreenBright
+        DownloadStatus.SUCCESS -> MatrixGreen
+        DownloadStatus.FAILED -> TerminalError
+        DownloadStatus.QUEUED -> MatrixGreenDim
+    }
+
+    Box(
+        modifier = modifier
+            .border(BorderStroke(2.dp, MatrixGreenBright))
+            .background(TerminalBg)
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 4.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(MatrixGreenBright.copy(alpha = 0.12f))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(clampedProgress)
+                    .background(MatrixGreenBright.copy(alpha = 0.35f))
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column {
                 Text(
-                    text = "> status: ${status.name.lowercase()}",
+                    text = "> $statusText",
                     color = statusColor,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "> progress: [$progressBar] $progressPercent%",
-                    color = MatrixGreen,
+                    text = "> payload ${progressPercent}%",
+                    color = MatrixGreenBright,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold
                 )
             }
-            
-            // Modern sleek download button
-            Box(
-                modifier = Modifier
-                    .clickable(enabled = !isDownloading, onClick = onAddClick)
-                    .background(
-                        if (isDownloading) 
-                            TerminalBg 
-                        else 
-                            MatrixGreenBright.copy(alpha = 0.15f)
-                    )
-                    .border(
-                        BorderStroke(
-                            width = 2.dp,
-                            color = if (isDownloading) MatrixGreenDim else MatrixGreenBright
-                        )
-                    )
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Download,
-                        contentDescription = "Download",
-                        tint = if (isDownloading) MatrixGreenDim else MatrixGreenBright,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "DOWNLOAD",
-                        color = if (isDownloading) MatrixGreenDim else MatrixGreenBright,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp
-                    )
-                }
-            }
+            Text(
+                text = "${progressPercent}%",
+                color = MatrixGreenBright,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun DownloadButton(
+    modifier: Modifier = Modifier,
+    onAddClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clickable(onClick = onAddClick)
+            .background(MatrixGreenBright.copy(alpha = 0.15f))
+            .border(BorderStroke(2.dp, MatrixGreenBright))
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Download,
+                contentDescription = "Download",
+                tint = MatrixGreenBright,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.size(12.dp))
+            Text(
+                text = "DOWNLOAD",
+                color = MatrixGreenBright,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp
+            )
         }
     }
 }
