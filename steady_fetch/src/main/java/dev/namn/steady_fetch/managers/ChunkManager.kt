@@ -6,7 +6,7 @@ import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadChunkWithProgress
 import dev.namn.steady_fetch.datamodels.DownloadRequest
 
-internal object ChunkManager {
+object ChunkManager {
 
     fun calculateChunkByteRanges(totalBytes: Long?, preferredChunkSizeBytes: Long?): List<LongRange>? {
         val bytes: Long = totalBytes ?: run {

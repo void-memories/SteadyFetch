@@ -13,7 +13,7 @@ import java.io.IOException
 internal class FileManager(
     private val progressStore: DownloadProgressStore
 ) {
-    fun ensureDownloadDirectoryExists(directory: File) {
+    fun ensureDirExists(directory: File) {
         val alreadyExists = directory.exists()
         if (!alreadyExists && !directory.mkdirs()) {
             val message = "Unable to create download directory: ${directory.absolutePath}"

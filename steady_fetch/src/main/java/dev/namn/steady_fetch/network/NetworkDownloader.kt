@@ -21,10 +21,6 @@ import okhttp3.Request
 import okhttp3.ResponseBody
 import java.util.concurrent.TimeUnit
 
-/**
- * Handles all network-related operations for file downloads.
- * Manages OkHttp client instance and provides network utility methods.
- */
 internal class NetworkDownloader(
     private val okHttpClient: OkHttpClient = buildOkHttpClient(),
     private val progressStore: DownloadProgressStore,
@@ -37,13 +33,6 @@ internal class NetworkDownloader(
             .build()
     }
 
-    /**
-     * Gets the total file size in bytes from the given URL using a HEAD request.
-     *
-     * @param url The URL to get the file size from
-     * @param headers Optional custom headers to include in the request
-     * @return The file size in bytes, or null if it cannot be determined
-     */
     suspend fun fetchFileContentLength(url: String, headers: Map<String, String> = emptyMap()): Long? {
         return withContext(Dispatchers.IO) {
             val requestBuilder = Request.Builder()

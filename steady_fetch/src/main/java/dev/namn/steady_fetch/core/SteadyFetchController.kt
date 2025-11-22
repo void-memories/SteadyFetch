@@ -16,7 +16,6 @@ import dev.namn.steady_fetch.network.NetworkDownloader
 import dev.namn.steady_fetch.progress.DownloadProgressStore
 import dev.namn.steady_fetch.managers.FileManager
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -152,7 +151,7 @@ internal class SteadyFetchController(private val application: Application) {
 
 
     private suspend fun prepareDownloadRequest(downloadId: Long, request: DownloadRequest): PreparedDownload {
-        fileManager.ensureDownloadDirectoryExists(request.outputDir)
+        fileManager.ensureDirExists(request.outputDir)
 
         val totalBytes = downloader.fetchFileContentLength(request.url, request.headers)
         fileManager.validateStorageCapacity(request.outputDir, totalBytes)
