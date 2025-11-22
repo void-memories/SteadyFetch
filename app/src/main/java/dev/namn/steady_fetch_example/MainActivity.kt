@@ -90,8 +90,7 @@ private val TerminalBorder = Color(0xFF00FF41).copy(alpha = 0.4f)
 private val ButtonMinHeight = 56.dp
 private val DemoDownloadLinks = listOf(
     "https://nbg1-speed.hetzner.com/100MB.bin",
-    "https://speed.hetzner.de/100MB.bin",
-    "https://speed.hetzner.de/1GB.bin"
+    "https://nbg1-speed.hetzner.com/1GB.bin",
 )
 
 class MainActivity : ComponentActivity() {
