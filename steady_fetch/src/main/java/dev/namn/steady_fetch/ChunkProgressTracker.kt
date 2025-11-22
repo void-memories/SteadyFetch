@@ -5,7 +5,6 @@ import dev.namn.steady_fetch.datamodels.DownloadChunkProgress
 import dev.namn.steady_fetch.datamodels.DownloadStatus
 
 class ChunkProgressTracker(chunks: List<DownloadChunk>) {
-
     private val state = chunks
         .map { chunk ->
             DownloadChunkProgress(
@@ -18,6 +17,10 @@ class ChunkProgressTracker(chunks: List<DownloadChunk>) {
 
     fun snapshot(): List<DownloadChunkProgress> = synchronized(state) {
         state.map { it.copy() }
+    }
+
+    fun seed(index: Int, status: DownloadStatus, progress: Float) {
+        update(index, status = status, progress = progress)
     }
 
     fun markRunning(index: Int): List<DownloadChunkProgress> =

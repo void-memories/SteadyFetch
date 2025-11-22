@@ -124,20 +124,28 @@ internal class Networking(
         headers: Map<String, String>,
         downloadDir: File,
         chunk: DownloadChunk,
+        alreadyDownloaded: Long,
         onProgress: (Float) -> Unit
     ) {
+        val expectedBytes = chunkSize(chunk)
+        val resumeBytes = alreadyDownloaded.coerceIn(0L, expectedBytes - 1)
+        val rangeStart = chunk.start + resumeBytes
         val request = buildRequest(url, headers) {
-            addHeader("Range", "bytes=${chunk.start}-${chunk.end}")
+            addHeader("Range", "bytes=$rangeStart-${chunk.end}")
         }
 
-        val expectedBytes = (chunk.end - chunk.start + 1).coerceAtLeast(1L)
         val chunkFile = File(downloadDir, chunk.name)
+        if (resumeBytes == 0L && chunkFile.exists()) {
+            chunkFile.delete()
+        }
 
         downloadToFile(
             request = request,
-            destination = chunkFile
+            destination = chunkFile,
+            append = resumeBytes > 0
         ) { bytesCopied ->
-            val progress = (bytesCopied.toDouble() / expectedBytes)
+            val total = (resumeBytes + bytesCopied).coerceAtMost(expectedBytes)
+            val progress = (total.toDouble() / expectedBytes)
                 .toFloat()
                 .coerceIn(0f, 1f)
             onProgress(progress)
@@ -147,6 +155,7 @@ internal class Networking(
     private fun downloadToFile(
         request: Request,
         destination: File,
+        append: Boolean = false,
         progressListener: ((Long) -> Unit)? = null
     ) {
         okHttpClient.newCall(request).execute().use { response ->
@@ -158,7 +167,7 @@ internal class Networking(
             val body = response.body ?: throw IOException("Empty response body")
 
             body.byteStream().use { input ->
-                FileOutputStream(destination).use { output ->
+                FileOutputStream(destination, append).use { output ->
                     val buffer = ByteArray(Constants.DEFAULT_BUFFER_SIZE)
                     var bytesCopied = 0L
 
@@ -230,33 +239,78 @@ internal class Networking(
         expectedMd5: String?,
         callback: SteadyFetchCallback
     ) = coroutineScope {
-        val completionSignal = AtomicBoolean(false)
-        val completedChunks = AtomicInteger(0)
         val tracker = ChunkProgressTracker(chunks)
+        val resumeStates = mutableListOf<ChunkResumeState>()
+        var initialCompleted = 0
+        chunks.forEachIndexed { index, chunk ->
+            val expected = chunkSize(chunk)
+            val chunkFile = File(downloadDir, chunk.name)
+            val existing = if (chunkFile.exists()) {
+                chunkFile.length().coerceIn(0L, expected)
+            } else {
+                0L
+            }
 
-        Log.d(Constants.TAG, "Chunked download queued ${chunks.size} chunks")
+            when {
+                existing >= expected -> {
+                    tracker.seed(index, DownloadStatus.SUCCESS, 1f)
+                    resumeStates.add(ChunkResumeState(expected, expected, ChunkResumeState.State.COMPLETE))
+                    initialCompleted++
+                }
+                existing > 0 -> {
+                    val progress = (existing.toDouble() / expected).toFloat().coerceIn(0f, 1f)
+                    tracker.seed(index, DownloadStatus.QUEUED, progress)
+                    resumeStates.add(ChunkResumeState(existing, expected, ChunkResumeState.State.PARTIAL))
+                }
+                else -> {
+                    resumeStates.add(ChunkResumeState(0, expected, ChunkResumeState.State.EMPTY))
+                }
+            }
+        }
+        val completionSignal = AtomicBoolean(false)
+        val completedChunks = AtomicInteger(initialCompleted)
+
+        Log.d(Constants.TAG, "Chunked download queued ${chunks.size} chunks (resumed $initialCompleted)")
         callback.emitProgress(
             status = DownloadStatus.QUEUED,
             chunkProgress = tracker.snapshot()
         )
 
+        if (initialCompleted == chunks.size) {
+            finalizeChunks(downloadDir, fileName, chunks, expectedMd5, tracker.snapshot(), callback, completionSignal)
+            return@coroutineScope
+        }
+
         chunks.forEachIndexed { index, chunk ->
             launch {
+                val resumeState = resumeStates[index]
+                if (resumeState.state == ChunkResumeState.State.COMPLETE) {
+                    return@launch
+                }
+
                 semaphore.withPermit {
                     if (completionSignal.get()) return@withPermit
 
                     Log.d(Constants.TAG, "Downloading chunk ${chunk.name}")
-                    callback.emitProgress(
-                        status = DownloadStatus.RUNNING,
-                        chunkProgress = tracker.markRunning(index)
-                    )
+                    if (resumeState.state == ChunkResumeState.State.EMPTY) {
+                        callback.emitProgress(
+                            status = DownloadStatus.RUNNING,
+                            chunkProgress = tracker.markRunning(index)
+                        )
+                    } else {
+                        callback.emitProgress(
+                            status = DownloadStatus.RUNNING,
+                            chunkProgress = tracker.snapshot()
+                        )
+                    }
 
                     try {
                         downloadChunkToFile(
                             url = url,
                             headers = headers,
                             downloadDir = downloadDir,
-                            chunk = chunk
+                            chunk = chunk,
+                            alreadyDownloaded = resumeState.downloaded
                         ) { progress ->
                             callback.emitProgress(
                                 status = DownloadStatus.RUNNING,
@@ -333,6 +387,17 @@ internal class Networking(
             }
         }
     }
+
+private fun chunkSize(chunk: DownloadChunk): Long =
+    (chunk.end - chunk.start + 1).coerceAtLeast(1L)
+
+private data class ChunkResumeState(
+    val downloaded: Long,
+    val expected: Long,
+    val state: State
+) {
+    enum class State { EMPTY, PARTIAL, COMPLETE }
+}
 
     private fun SteadyFetchCallback.emitProgress(
         status: DownloadStatus,

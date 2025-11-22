@@ -2,11 +2,6 @@ package dev.namn.steady_fetch
 
 internal object Constants {
     const val TAG = "STEADY_FETCH"
-    const val TAG_STEADY_FETCH_CONTROLLER = "SteadyFetchController"
-    const val TAG_NETWORK_DOWNLOADER = "NetworkDownloader"
-    const val TAG_CHUNK_MANAGER = "ChunkManager"
-    const val TAG_FILE_MANAGER = "FileManager"
-
     const val DEFAULT_CONNECT_TIMEOUT_SECONDS = 10L
     const val DEFAULT_READ_TIMEOUT_SECONDS = 10L
 
