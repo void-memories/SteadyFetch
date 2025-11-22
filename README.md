@@ -19,7 +19,7 @@ SteadyFetch is a Kotlin SDK for Android that provides reliable, resumable downlo
 
 ## Demo
 
-https://github.com/user-attachments/assets/f14753d8-9445-4ed9-ba48-8abceb415216
+https://github.com/user-attachments/assets/2b9f9384-eac8-4a22-932f-2f8728a2870b
 
 ---
 
