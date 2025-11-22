@@ -24,8 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class Networking(
     private val okHttpClient: OkHttpClient,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
     fun getExpectedFileSize(url: String, headers: Map<String, String>): Long? {
         return try {

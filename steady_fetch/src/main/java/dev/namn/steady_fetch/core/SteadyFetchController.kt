@@ -11,6 +11,7 @@ import dev.namn.steady_fetch.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.datamodels.DownloadRequest
 import dev.namn.steady_fetch.io.Networking
 import dev.namn.steady_fetch.managers.FileManager
+import okhttp3.OkHttpClient
 
 /**
  * 1. store current nanos = downloadId
@@ -26,8 +27,9 @@ import dev.namn.steady_fetch.managers.FileManager
  *    else: delete parts + reconsilation
  */
 internal class SteadyFetchController(private val application: Application) {
+    private val okHttpClient = OkHttpClient()
     private val fileManager = FileManager()
-    private val networking = Networking()
+    private val networking = Networking(okHttpClient)
     private val chunkManager = ChunkManager()
 
     fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {

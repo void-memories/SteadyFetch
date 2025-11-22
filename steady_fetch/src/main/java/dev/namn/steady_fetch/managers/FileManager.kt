@@ -6,8 +6,7 @@ import dev.namn.steady_fetch.Constants
 import java.io.File
 import java.io.IOException
 
-internal class FileManager(
-) {
+internal class FileManager() {
     fun validateStorageCapacity(destinationDir: File, expectedBytes: Long) {
         val availableBytes = StatFs(destinationDir.absolutePath).availableBytes
         val requiredBytes = (expectedBytes * Constants.STORAGE_SAFETY_MARGIN_PERCENT).toLong()

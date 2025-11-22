@@ -2,7 +2,6 @@ package dev.namn.steady_fetch
 
 import android.app.Application
 import dev.namn.steady_fetch.core.SteadyFetchController
-import dev.namn.steady_fetch.datamodels.DownloadQueryResponse
 import dev.namn.steady_fetch.datamodels.DownloadRequest
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -20,31 +19,22 @@ object SteadyFetch {
         }
     }
 
-    fun queueDownload(request: DownloadRequest): Long? {
+    fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long? {
         try {
             ensureInitialized()
-            return steadyFetchController!!.queueDownload(request)
+            return steadyFetchController!!.queueDownload(request, callback)
         } catch (e: Exception) {
             throw RuntimeException("Failed to queue download: ${e.message}", e)
         }
     }
 
-    fun queryDownloadStatus(downloadId: Long): DownloadQueryResponse {
-        try {
-            ensureInitialized()
-            return steadyFetchController!!.queryDownloadStatus(downloadId)
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to query download: ${e.message}", e)
-        }
-    }
-
     suspend fun cancelDownload(downloadId: Long): Boolean {
-        try {
-            ensureInitialized()
-            return steadyFetchController!!.cancelDownload(downloadId)
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to cancel download: ${e.message}", e)
-        }
+//        try {
+//            ensureInitialized()
+//            return steadyFetchController!!.cancelDownload(downloadId)
+//        } catch (e: Exception) {
+//            throw RuntimeException("Failed to cancel download: ${e.message}", e)
+//        }
     }
 
     private fun ensureInitialized() {
