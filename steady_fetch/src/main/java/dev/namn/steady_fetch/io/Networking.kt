@@ -10,6 +10,7 @@ import dev.namn.steady_fetch.datamodels.DownloadError
 import dev.namn.steady_fetch.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.datamodels.DownloadProgress
 import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.managers.FileManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -24,8 +25,9 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-class Networking(
+internal class Networking(
     private val okHttpClient: OkHttpClient,
+    private val fileManager: FileManager,
 ) {
     data class RemoteMetadata(
         val contentLength: Long?,
@@ -84,6 +86,7 @@ class Networking(
                     url = request.url,
                     headers = request.headers,
                     downloadDir = request.downloadDir,
+                    fileName = request.fileName,
                     callback = callback
                 )
             }
@@ -218,6 +221,7 @@ class Networking(
         url: String,
         headers: Map<String, String>,
         downloadDir: File,
+        fileName: String,
         callback: SteadyFetchCallback
     ) = coroutineScope {
         val completionSignal = AtomicBoolean(false)
@@ -258,17 +262,31 @@ class Networking(
                         val finished = completedChunks.incrementAndGet()
                         val allFinished = finished == chunks.size
 
-                        val status = if (allFinished) {
-                            DownloadStatus.SUCCESS
+                        if (allFinished) {
+                            try {
+                                fileManager.reconcileChunks(downloadDir, fileName, chunks)
+                                callback.emitProgress(DownloadStatus.SUCCESS, snapshot)
+                                if (completionSignal.compareAndSet(false, true)) {
+                                    Log.i(Constants.TAG, "All chunks completed")
+                                    callback.onSuccess()
+                                }
+                            } catch (mergeError: Exception) {
+                                Log.e(Constants.TAG, "Failed to reconcile chunks", mergeError)
+                                callback.emitProgress(
+                                    status = DownloadStatus.FAILED,
+                                    chunkProgress = snapshot
+                                )
+                                if (completionSignal.compareAndSet(false, true)) {
+                                    callback.onError(
+                                        DownloadError(
+                                            code = -1,
+                                            message = mergeError.message ?: "Failed to merge chunks"
+                                        )
+                                    )
+                                }
+                            }
                         } else {
-                            DownloadStatus.RUNNING
-                        }
-
-                        callback.emitProgress(status, snapshot)
-
-                        if (allFinished && completionSignal.compareAndSet(false, true)) {
-                            Log.i(Constants.TAG, "All chunks completed")
-                            callback.onSuccess()
+                            callback.emitProgress(DownloadStatus.RUNNING, snapshot)
                         }
                     } catch (e: Exception) {
                         Log.e(Constants.TAG, "Chunk ${chunk.name} failed", e)

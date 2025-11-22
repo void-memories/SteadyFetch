@@ -24,7 +24,7 @@ import okhttp3.OkHttpClient
 internal class SteadyFetchController(private val application: Application) {
     private val okHttpClient = OkHttpClient()
     private val fileManager = FileManager()
-    private val networking = Networking(okHttpClient)
+    private val networking = Networking(okHttpClient, fileManager)
     private val chunkManager = ChunkManager()
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val notificationManager = DownloadNotificationManager(application)

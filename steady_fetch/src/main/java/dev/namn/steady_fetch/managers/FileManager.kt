@@ -4,9 +4,11 @@ import android.os.StatFs
 import android.util.Log
 import dev.namn.steady_fetch.Constants
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 
-internal class FileManager() {
+internal class FileManager {
     fun validateStorageCapacity(destinationDir: File, expectedBytes: Long) {
         val availableBytes = StatFs(destinationDir.absolutePath).availableBytes
         val requiredBytes = (expectedBytes * Constants.STORAGE_SAFETY_MARGIN_PERCENT).toLong()
@@ -33,6 +35,52 @@ internal class FileManager() {
             Log.i(Constants.TAG, "Created directory ${dir.absolutePath}")
         } else {
             Log.d(Constants.TAG, "Directory already exists ${dir.absolutePath}")
+        }
+    }
+
+    fun reconcileChunks(
+        downloadDir: File,
+        fileName: String,
+        chunks: List<dev.namn.steady_fetch.datamodels.DownloadChunk>
+    ) {
+        if (chunks.isEmpty()) return
+
+        val orderedChunks = chunks.sortedBy { it.start }
+        val finalFile = File(downloadDir, fileName)
+        val tempFile = File(downloadDir, "$fileName.__assembling")
+
+        try {
+            FileOutputStream(tempFile).use { output ->
+                orderedChunks.forEach { chunk ->
+                    val chunkFile = File(downloadDir, chunk.name)
+                    if (!chunkFile.exists()) {
+                        throw IOException("Missing chunk file ${chunkFile.absolutePath}")
+                    }
+                    FileInputStream(chunkFile).use { input ->
+                        input.copyTo(output)
+                    }
+                }
+                output.fd.sync()
+            }
+
+            if (finalFile.exists() && !finalFile.delete()) {
+                throw IOException("Unable to delete existing file ${finalFile.absolutePath}")
+            }
+
+            if (!tempFile.renameTo(finalFile)) {
+                throw IOException("Unable to finalize file ${finalFile.absolutePath}")
+            }
+
+            orderedChunks.forEach { chunk ->
+                val chunkFile = File(downloadDir, chunk.name)
+                if (chunkFile.exists() && !chunkFile.delete()) {
+                    Log.w(Constants.TAG, "Failed to delete chunk ${chunkFile.absolutePath}")
+                }
+            }
+            Log.i(Constants.TAG, "Reconciled ${orderedChunks.size} chunks into ${finalFile.absolutePath}")
+        } catch (e: IOException) {
+            tempFile.delete()
+            throw e
         }
     }
 
