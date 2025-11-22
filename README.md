@@ -5,54 +5,48 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin)](https://kotlinlang.org/)
 [![Android API](https://img.shields.io/badge/API-28%2B-3DDC84?logo=android)](#)
 
-> _"One download stream? That’s cute. SteadyFetch opens the vault doors with multi-connection precision."_  
+SteadyFetch is a Kotlin SDK for Android that provides reliable, resumable downloads. It handles chunking, storage validation, notifications, and foreground service requirements so your app can focus on business logic.
 
-SteadyFetch is a Kotlin-based Android SDK that turns downloads into an orchestrated op. It slices large payloads into coordinated chunks, persists progress, and recovers gracefully when networks misbehave. Use it to ship resumable, foreground-aware downloads without rewriting the transport stack for every app.
+## Feature Highlights
 
-### 🎯 Feature Signal
-
-- **Uninterrupted missions** – Foreground service keeps long transfers alive even through app kills or background restrictions.
-- **State persistence** – Chunk progress and metadata survive process death so downloads resume exactly where they stopped.
-- **Automatic resume** – Interrupted transfers reconnect, validate remote metadata, and continue without re-downloading bytes.
-- **Multi-connection mesh** – Parallel chunking squeezes every drop out of fast networks.
-- **Battle-tested** – MockK, Robolectric, and MockWebServer suites cover callbacks, chunk math, IO, and failure paths.
+- **Parallel chunk downloads** – Splits files into chunks and fetches them concurrently.
+- **Foreground-friendly execution** – Keeps long transfers alive through a dedicated service + notification flow.
+- **Resume support** – Persists state and resumes exactly where a transfer stopped.
+- **Checksum + storage validation** – Validates remote metadata and available storage before writing.
+- **Well-tested core** – Unit tests cover the controller, networking layer, chunk math, and error propagation.
 
 ---
 
-## 📡 Demo
+## Demo
 
 https://github.com/user-attachments/assets/f14753d8-9445-4ed9-ba48-8abceb415216
 
 ---
 
-## 📡 Index
+## Table of Contents
 
-1. [Feature Signal](#-feature-signal)
-2. [Signal at a Glance](#-signal-at-a-glance)
-3. [Bootstrapping the SDK](#%EF%B8%8F-bootstrapping-the-sdk)
-4. [Quick Deploy](#-quick-deploy)
-5. [License](#-license)
-
----
-
-## ⚡ Signal at a Glance
-
-- **Mission profile** – Resumable, multi-connection downloads with chunk-level tracking.
-- **Stack** – Kotlin, OkHttp, Android Service + Notification integration.
-- **Targets** – Android 9 (API 28) and above, compiled with SDK 36.
-- **Status lights** – `Release Check` GitHub Action runs lint/tests + publication smoke-test.
-- **Distribution** – Consumable straight from JitPack under `dev.namn.steady-fetch:steady-fetch`.
+1. [Feature Highlights](#feature-highlights)
+2. [Quick Facts](#quick-facts)
+3. [Setup](#setup)
+4. [Usage Example](#usage-example)
+5. [License](#license)
 
 ---
 
-## 🛠️ Bootstrapping the SDK
+## Quick Facts
 
-### 1. Wire up the repository
+- **Use case** – Resumable downloads with chunk-level progress.
+- **Tech stack** – Kotlin, OkHttp, Android Service and Notification APIs.
+- **Minimum OS** – Android 9 (API 28); builds against SDK 36.
+- **Distribution** – Published via JitPack under `dev.namn.steady-fetch:steady-fetch`.
 
-Add JitPack to your settings once:
+---
+
+## Setup
+
+Add JitPack once in `settings.gradle.kts`:
 
 ```kotlin
-// settings.gradle.kts
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -63,31 +57,28 @@ dependencyResolutionManagement {
 }
 ```
 
-### 2. Pull in the dependency
+Pull in the dependency in your module:
 
 ```kotlin
-// module build.gradle.kts
 dependencies {
     implementation("dev.namn.steady-fetch:steady-fetch:<version>")
 }
 ```
 
-Latest release versions live at [jitpack.io/#void-memories/SteadyFetch](https://jitpack.io/#void-memories/SteadyFetch). Until a release drops, the default artifact is `0.1.0-SNAPSHOT`.
+Latest versions are listed on [jitpack.io/#void-memories/SteadyFetch](https://jitpack.io/#void-memories/SteadyFetch). Until an official release ships, use `0.1.0-SNAPSHOT`.
 
 ---
 
-## 🚀 Quick Deploy
+## Usage Example
 
 ```kotlin
-// App.kt
 class SteadyFetchApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        SteadyFetch.initialize(this) // arm the internal controller + services
+        SteadyFetch.initialize(this)
     }
 }
 
-// Somewhere in your feature module
 val downloadId = SteadyFetch.queueDownload(
     request = DownloadRequest(
         url = "https://files.example.com/iso/latest.iso",
@@ -95,20 +86,20 @@ val downloadId = SteadyFetch.queueDownload(
         downloadDir = File(context.filesDir, "downloads")
     ),
     callback = object : SteadyFetchCallback {
-        override fun onSuccess() { /* Mission accomplished */ }
-        override fun onUpdate(progress: DownloadProgress) { /* UI pulse */ }
-        override fun onError(error: DownloadError) { /* Re-arm or abort */ }
+        override fun onSuccess() { /* update UI */ }
+        override fun onUpdate(progress: DownloadProgress) { /* show progress */ }
+        override fun onError(error: DownloadError) { /* handle failure */ }
     }
 )
 
-// Abort when needed
 SteadyFetch.cancelDownload(downloadId)
 ```
 
-> All primary entry points live under `dev.namn.steady_fetch` and are unit-tested (MockK, Robolectric, MockWebServer) to ensure deterministic runs.
+All entry points live under `dev.namn.steady_fetch` and are backed by unit tests (MockK, Robolectric, MockWebServer).
 
 ---
 
-## 📜 License
+## License
 
-SteadyFetch is distributed under the [MIT License](./LICENSE). Feel free to use it in commercial and open-source apps—just keep the copyright + permission notice intact.
+SteadyFetch is distributed under the [MIT License](./LICENSE). Include the copyright and license notice in any
+redistribution.

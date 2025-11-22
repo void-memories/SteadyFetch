@@ -11,10 +11,12 @@ import dev.namn.steady_fetch.impl.datamodels.DownloadError
 import dev.namn.steady_fetch.impl.datamodels.DownloadProgress
 import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 data class ChunkProgressUi(
@@ -57,34 +59,43 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             headers = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
             ),
-            maxParallelDownloads = 4,
+            maxParallelDownloads = 8,
             downloadDir = outputDir,
             fileName = fileName
         )
 
         val callback = createCallback()
 
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isDownloading = true,
-                    errorMessage = null,
-                    status = DownloadStatus.QUEUED,
-                    overallProgress = 0f,
-                    chunkProgress = emptyList()
-                )
-            }
-
-            try {
-                val downloadId = SteadyFetch.queueDownload(request, callback)
-                _uiState.update { it.copy(downloadId = downloadId) }
-            } catch (e: Exception) {
+        viewModelScope.launch(Dispatchers.Default) {
+            withContext(Dispatchers.Main) {
                 _uiState.update {
                     it.copy(
-                        errorMessage = e.message ?: "Failed to queue download",
-                        isDownloading = false,
-                        status = DownloadStatus.FAILED
+                        isDownloading = true,
+                        errorMessage = null,
+                        status = DownloadStatus.QUEUED,
+                        overallProgress = 0f,
+                        chunkProgress = emptyList()
                     )
+                }
+            }
+
+            val result = runCatching {
+                SteadyFetch.queueDownload(request, callback)
+            }
+
+            result.onSuccess { downloadId ->
+                withContext(Dispatchers.Main) {
+                    _uiState.update { it.copy(downloadId = downloadId) }
+                }
+            }.onFailure { error ->
+                withContext(Dispatchers.Main) {
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = error.message ?: "Failed to queue download",
+                            isDownloading = false,
+                            status = DownloadStatus.FAILED
+                        )
+                    }
                 }
             }
         }
@@ -146,7 +157,7 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun postStateUpdate(block: (DownloadUiState) -> DownloadUiState) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Main.immediate) {
             _uiState.update(block)
         }
     }
