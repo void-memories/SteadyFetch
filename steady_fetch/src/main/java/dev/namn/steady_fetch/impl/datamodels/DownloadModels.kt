@@ -1,4 +1,4 @@
-package dev.namn.steady_fetch.datamodels
+package dev.namn.steady_fetch.impl.datamodels
 
 import java.io.File
 

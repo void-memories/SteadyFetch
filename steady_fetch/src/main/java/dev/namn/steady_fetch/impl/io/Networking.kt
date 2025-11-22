@@ -1,16 +1,16 @@
-package dev.namn.steady_fetch.io
+package dev.namn.steady_fetch.impl.io
 
 import android.util.Log
-import dev.namn.steady_fetch.managers.ChunkProgressManager
-import dev.namn.steady_fetch.SteadyFetchCallback
-import dev.namn.steady_fetch.uilts.Constants
-import dev.namn.steady_fetch.datamodels.DownloadChunk
-import dev.namn.steady_fetch.datamodels.DownloadChunkProgress
-import dev.namn.steady_fetch.datamodels.DownloadError
-import dev.namn.steady_fetch.datamodels.DownloadMetadata
-import dev.namn.steady_fetch.datamodels.DownloadProgress
-import dev.namn.steady_fetch.datamodels.DownloadStatus
-import dev.namn.steady_fetch.managers.FileManager
+import dev.namn.steady_fetch.impl.managers.ChunkProgressManager
+import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
+import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
+import dev.namn.steady_fetch.impl.datamodels.DownloadChunkProgress
+import dev.namn.steady_fetch.impl.datamodels.DownloadError
+import dev.namn.steady_fetch.impl.datamodels.DownloadMetadata
+import dev.namn.steady_fetch.impl.datamodels.DownloadProgress
+import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
+import dev.namn.steady_fetch.impl.managers.FileManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope

@@ -6,7 +6,7 @@
 
     <application>
         <service
-            android:name="dev.namn.steady_fetch.notifications.DownloadForegroundService"
+            android:name="dev.namn.steady_fetch.impl.notifications.DownloadForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     </application>

@@ -1,6 +1,6 @@
 import android.util.Log
-import dev.namn.steady_fetch.uilts.Constants
-import dev.namn.steady_fetch.datamodels.DownloadChunk
+import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
 import kotlin.math.ceil
 
 class ChunkManager() {

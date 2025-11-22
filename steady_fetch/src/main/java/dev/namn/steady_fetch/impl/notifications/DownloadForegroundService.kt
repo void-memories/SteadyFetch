@@ -1,16 +1,16 @@
-package dev.namn.steady_fetch.notifications
+package dev.namn.steady_fetch.impl.notifications
 
+import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 import kotlin.math.roundToInt
 
 internal class DownloadForegroundService : Service() {
@@ -65,9 +65,9 @@ internal class DownloadForegroundService : Service() {
             DownloadStatus.FAILED -> "Download failed"
         }
         val iconRes = when (status) {
-            DownloadStatus.SUCCESS -> android.R.drawable.stat_sys_download_done
-            DownloadStatus.FAILED -> android.R.drawable.stat_notify_error
-            else -> android.R.drawable.stat_sys_download
+            DownloadStatus.SUCCESS -> R.drawable.stat_sys_download_done
+            DownloadStatus.FAILED -> R.drawable.stat_notify_error
+            else -> R.drawable.stat_sys_download
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -86,7 +86,7 @@ internal class DownloadForegroundService : Service() {
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         val existing = manager.getNotificationChannel(CHANNEL_ID)
         if (existing != null) return
 
@@ -129,4 +129,3 @@ internal class DownloadForegroundService : Service() {
         const val EXTRA_STATUS = "extra_status"
     }
 }
-

@@ -1,9 +1,9 @@
-package dev.namn.steady_fetch.notifications
+package dev.namn.steady_fetch.impl.notifications
 
 import android.app.Application
 import android.content.Intent
 import androidx.core.content.ContextCompat
-import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 
 internal class DownloadNotificationManager(
     private val application: Application
@@ -29,4 +29,3 @@ internal class DownloadNotificationManager(
         ContextCompat.startForegroundService(application, intent)
     }
 }
-

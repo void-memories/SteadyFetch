@@ -1,12 +1,11 @@
 package dev.namn.steady_fetch.models
 
 import android.app.Application
-import dev.namn.steady_fetch.uilts.Constants.DEFAULT_CHUNK_SIZE_BYTES
+import dev.namn.steady_fetch.impl.uilts.Constants.DEFAULT_CHUNK_SIZE_BYTES
 import io.mockk.mockk
 import org.junit.Test
 import org.junit.Assert.*
 import org.junit.Before
-import java.io.File
 
 /**
  * Unit tests for SteadyFetchController

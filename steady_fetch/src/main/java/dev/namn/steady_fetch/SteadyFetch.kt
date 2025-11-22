@@ -2,9 +2,10 @@ package dev.namn.steady_fetch
 
 import android.app.Application
 import android.util.Log
-import dev.namn.steady_fetch.core.SteadyFetchController
-import dev.namn.steady_fetch.datamodels.DownloadRequest
-import dev.namn.steady_fetch.uilts.Constants
+import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
+import dev.namn.steady_fetch.impl.controllers.SteadyFetchController
+import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
+import dev.namn.steady_fetch.impl.uilts.Constants
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SteadyFetch {

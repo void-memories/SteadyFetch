@@ -1,8 +1,8 @@
-package dev.namn.steady_fetch.managers
+package dev.namn.steady_fetch.impl.managers
 
-import dev.namn.steady_fetch.datamodels.DownloadChunk
-import dev.namn.steady_fetch.datamodels.DownloadChunkProgress
-import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
+import dev.namn.steady_fetch.impl.datamodels.DownloadChunkProgress
+import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 
 class ChunkProgressManager(chunks: List<DownloadChunk>) {
     private val state = chunks

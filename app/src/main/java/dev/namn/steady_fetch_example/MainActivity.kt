@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -45,7 +44,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -72,10 +70,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.times
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 import dev.namn.steady_fetch_example.ui.theme.SteadyFetchExampleTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -85,6 +82,7 @@ private val TerminalBg = Color(0xFF000000) // Pure black
 private val MatrixGreen = Color(0xFF00FF41) // Classic Matrix green
 private val MatrixGreenBright = Color(0xFF39FF14) // Bright Matrix green
 private val MatrixGreenDim = Color(0xFF00AA00) // Dim Matrix green
+private val MatrixAccent = Color(0xFF40FFD5) // Teal accent for highlights
 private val TerminalError = Color(0xFFFF0044) // Red
 private val TerminalBorder = Color(0xFF00FF41).copy(alpha = 0.4f)
 private val ButtonMinHeight = 56.dp
@@ -254,8 +252,8 @@ private fun TerminalChunk(
 
     val isRunning = status == DownloadStatus.RUNNING
     val fillColor = if (isRunning) MatrixGreenBright else MatrixGreen
-    val borderColor = if (isRunning) MatrixGreenBright else MatrixGreen.copy(alpha = 0.6f)
-    val bgColor = if (isRunning) MatrixGreenBright.copy(alpha = 0.1f) else TerminalBg
+    val borderColor = if (isRunning) MatrixAccent else MatrixGreen.copy(alpha = 0.6f)
+    val bgColor = if (isRunning) MatrixAccent.copy(alpha = 0.08f) else TerminalBg
 
     BoxWithConstraints(
         modifier = Modifier
@@ -283,7 +281,7 @@ private fun TerminalChunk(
         // Progress percentage text
         Text(
             text = if (blockyProgress > 0.01f) "${(blockyProgress * 100).toInt()}%" else "",
-            color = if (isRunning) MatrixGreenBright else MatrixGreen,
+            color = if (isRunning) MatrixAccent else MatrixGreen,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.Center)

@@ -6,11 +6,11 @@ import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.namn.steady_fetch.SteadyFetch
-import dev.namn.steady_fetch.SteadyFetchCallback
-import dev.namn.steady_fetch.datamodels.DownloadError
-import dev.namn.steady_fetch.datamodels.DownloadProgress
-import dev.namn.steady_fetch.datamodels.DownloadRequest
-import dev.namn.steady_fetch.datamodels.DownloadStatus
+import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
+import dev.namn.steady_fetch.impl.datamodels.DownloadError
+import dev.namn.steady_fetch.impl.datamodels.DownloadProgress
+import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
+import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update

@@ -1,7 +1,7 @@
-package dev.namn.steady_fetch.extensions
+package dev.namn.steady_fetch.impl.extensions
 
-import dev.namn.steady_fetch.uilts.Constants
-import dev.namn.steady_fetch.datamodels.DownloadError
+import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.datamodels.DownloadError
 import kotlinx.coroutines.CancellationException
 
 internal fun Throwable.convertToDownloadError(): DownloadError {
