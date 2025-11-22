@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -69,6 +72,11 @@ private val HudBorderColor = Color.White.copy(alpha = 0.18f)
 private val HudGlowColor = Color(0xFF586BFF)
 private val HudAccentColor = Color(0xFF7C8AFF)
 private val HudInputOverlay = Color.White.copy(alpha = 0.05f)
+private val DemoDownloadLinks = listOf(
+    "https://nbg1-speed.hetzner.com/100MB.bin",
+    "https://speed.hetzner.de/100MB.bin",
+    "https://speed.hetzner.de/1GB.bin"
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -154,7 +162,8 @@ private fun DownloadScreenBody(
                 onDownloadClick()
             },
             errorMessage = uiState.errorMessage,
-            isDownloading = uiState.isDownloading
+            isDownloading = uiState.isDownloading,
+            suggestedUrls = DemoDownloadLinks
         )
     }
 }
@@ -177,13 +186,19 @@ private fun ChunkMatrix(chunks: List<ChunkProgressUi>, modifier: Modifier = Modi
     ) {
         items(displayItems.size) { index ->
             val chunk = displayItems[index]
-            ChunkSquare(progress = chunk?.progress)
+            ChunkSquare(
+                progress = chunk?.progress,
+                status = chunk?.status
+            )
         }
     }
 }
 
 @Composable
-private fun ChunkSquare(progress: Float?) {
+private fun ChunkSquare(
+    progress: Float?,
+    status: DownloadStatus? = null
+) {
     val normalized = progress?.coerceIn(0f, 1f) ?: 0f
     val animatedProgress by animateFloatAsState(
         targetValue = normalized,
@@ -211,12 +226,16 @@ private fun ChunkSquare(progress: Float?) {
         Modifier.background(baseColor)
     }
 
+    val isRunning = status == DownloadStatus.RUNNING
+    val borderColor = if (isRunning) Color.White else GridBorderColor
+    val borderWidth = if (isRunning) 2.dp else 1.dp
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .then(backgroundModifier)
-            .border(BorderStroke(1.dp, GridBorderColor))
+            .border(BorderStroke(borderWidth, borderColor))
     )
 }
 
@@ -282,7 +301,7 @@ private fun BottomHud(
                         )
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Add,
+                        imageVector = Icons.Filled.Download,
                         contentDescription = "Add download",
                         tint = if (isDownloading) 
                             Color.White.copy(alpha = 0.35f) 
@@ -304,7 +323,8 @@ private fun UrlInputDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     errorMessage: String?,
-    isDownloading: Boolean
+    isDownloading: Boolean,
+    suggestedUrls: List<String>
 ) {
     val canConfirm = url.isNotBlank() && !isDownloading
 
@@ -343,6 +363,12 @@ private fun UrlInputDialog(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+                if (suggestedUrls.isNotEmpty()) {
+                    SuggestedUrlList(
+                        urls = suggestedUrls,
+                        onUrlSelected = { selected -> onUrlChange(selected) }
+                    )
+                }
             }
         },
         confirmButton = {
@@ -356,6 +382,61 @@ private fun UrlInputDialog(
             }
         }
     )
+}
+
+@Composable
+private fun SuggestedUrlList(
+    urls: List<String>,
+    onUrlSelected: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Try a sample link",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color.White.copy(alpha = 0.8f)
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            urls.forEach { suggestion ->
+                SuggestedUrlItem(
+                    url = suggestion,
+                    onClick = { onUrlSelected(suggestion) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SuggestedUrlItem(
+    url: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = HudInputOverlay,
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, HudBorderColor.copy(alpha = 0.4f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = url,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "Tap to use",
+                style = MaterialTheme.typography.labelSmall,
+                color = HudAccentColor
+            )
+        }
+    }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF05070F)

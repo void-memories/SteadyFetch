@@ -2,8 +2,8 @@ package dev.namn.steady_fetch.io
 
 import android.util.Log
 import dev.namn.steady_fetch.ChunkProgressTracker
-import dev.namn.steady_fetch.Constants
 import dev.namn.steady_fetch.SteadyFetchCallback
+import dev.namn.steady_fetch.Constants
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadChunkProgress
 import dev.namn.steady_fetch.datamodels.DownloadError
@@ -27,34 +27,32 @@ import java.util.concurrent.atomic.AtomicInteger
 class Networking(
     private val okHttpClient: OkHttpClient,
 ) {
+    data class RemoteMetadata(
+        val contentLength: Long?,
+        val supportsRanges: Boolean
+    )
+
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
-    fun getExpectedFileSize(url: String, headers: Map<String, String>): Long? {
-        return try {
-            val request = buildHeadRequest(url, headers)
-            okHttpClient.newCall(request).execute().use { response ->
-                val size = response.header("Content-Length")?.toLongOrNull()
-                Log.d(Constants.TAG, "HEAD content-length for $url -> $size")
-                size
-            }
-        } catch (e: IOException) {
-            Log.w(Constants.TAG, "HEAD content-length failed for $url", e)
-            null
+    fun fetchRemoteMetadata(url: String, headers: Map<String, String>): RemoteMetadata {
+        val probeResult = tryRangeProbe(url, headers)
+        if (probeResult != null) {
+            return probeResult
         }
-    }
 
-    fun doesServerSupportChunking(url: String, headers: Map<String, String>): Boolean {
-        return try {
-            val request = buildHeadRequest(url, headers)
-            okHttpClient.newCall(request).execute().use { response ->
-                val supported = response.header("Accept-Ranges")?.lowercase() == "bytes"
-                Log.d(Constants.TAG, "Server chunk support for $url -> $supported")
-                supported
-            }
-        } catch (e: IOException) {
-            Log.w(Constants.TAG, "HEAD chunk support failed for $url", e)
-            false
+        val headSize = tryHeadForSize(url, headers)
+        if (headSize != null) {
+            return RemoteMetadata(
+                contentLength = headSize,
+                supportsRanges = false
+            )
         }
+
+        Log.w(Constants.TAG, "Unable to determine remote metadata for $url, proceeding without chunking")
+        return RemoteMetadata(
+            contentLength = null,
+            supportsRanges = false
+        )
     }
 
     fun download(
@@ -92,13 +90,6 @@ class Networking(
         }
     }
 
-    private fun buildHeadRequest(
-        url: String,
-        headers: Map<String, String>
-    ): Request = buildRequest(url, headers) {
-        head()
-    }
-
     private fun buildRequest(
         url: String,
         headers: Map<String, String>,
@@ -110,6 +101,9 @@ class Networking(
                 headers.forEach { (key, value) ->
                     addHeader(key, value)
                 }
+                // Disable gzip encoding - some servers (like Hetzner) reject requests with gzip
+                removeHeader("Accept-Encoding")
+                addHeader("Accept-Encoding", "identity")
                 block()
             }
             .build()
@@ -325,5 +319,73 @@ class Networking(
         return (total / chunkProgress.size)
             .toFloat()
             .coerceIn(0f, 1f)
+    }
+
+    private fun tryRangeProbe(
+        url: String,
+        headers: Map<String, String>
+    ): RemoteMetadata? {
+        val request = buildRequest(url, headers) {
+            addHeader("Range", "bytes=0-0")
+            addHeader("Accept-Encoding", "identity")
+        }
+
+        return try {
+            okHttpClient.newCall(request).execute().use { response ->
+                // Consume the body to allow connection reuse
+                response.body?.close()
+                
+                val contentLength = when (response.code) {
+                    206 -> parseContentRangeTotal(response.header("Content-Range"))
+                        ?: response.header("Content-Length")?.toLongOrNull()
+                    else -> response.header("Content-Length")?.toLongOrNull()
+                }
+
+                val supportsRanges = response.code == 206 && response.header("Content-Range") != null
+                Log.d(
+                    Constants.TAG,
+                    "Range probe for $url -> supports=$supportsRanges length=$contentLength status=${response.code}"
+                )
+                RemoteMetadata(contentLength, supportsRanges)
+            }
+        } catch (e: IOException) {
+            Log.w(
+                Constants.TAG,
+                "Range probe failed for $url (${e.message ?: "unknown error"})"
+            )
+            null
+        }
+    }
+
+    private fun tryHeadForSize(
+        url: String,
+        headers: Map<String, String>
+    ): Long? {
+        val request = buildRequest(url, headers) {
+            head()
+            addHeader("Accept-Encoding", "identity")
+        }
+
+        return try {
+            okHttpClient.newCall(request).execute().use { response ->
+                response.body?.close()
+                val size = response.header("Content-Length")?.toLongOrNull()
+                Log.d(Constants.TAG, "HEAD fallback content-length for $url -> $size")
+                size
+            }
+        } catch (e: IOException) {
+            Log.w(
+                Constants.TAG,
+                "HEAD fallback failed for $url (${e.message ?: "unknown error"})"
+            )
+            null
+        }
+    }
+
+    private fun parseContentRangeTotal(header: String?): Long? {
+        if (header.isNullOrBlank()) return null
+        val parts = header.split('/')
+        if (parts.size != 2) return null
+        return parts[1].trim().toLongOrNull()
     }
 }

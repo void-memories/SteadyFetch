@@ -16,9 +16,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 
 internal class SteadyFetchController(private val application: Application) {
-    private val okHttpClient = OkHttpClient()
+    private val okHttpClient = OkHttpClient.Builder()
+        .protocols(listOf(Protocol.HTTP_1_1)) // Force HTTP/1.1 - some servers have issues with HTTP/2
+        .addInterceptor { chain ->
+            // Some servers block OkHttp's default User-Agent, use a browser-like one
+            val originalRequest = chain.request()
+            val newRequest = originalRequest.newBuilder()
+                .removeHeader("User-Agent")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
+                .build()
+            chain.proceed(newRequest)
+        }
+        .build()
     private val fileManager = FileManager()
     private val networking = Networking(okHttpClient)
     private val chunkManager = ChunkManager()
@@ -36,7 +48,8 @@ internal class SteadyFetchController(private val application: Application) {
         ioScope.launch {
             fileManager.createDirectoryIfNotExists(request.downloadDir)
 
-            val expectedFileSize = networking.getExpectedFileSize(request.url, request.headers)
+            val remoteMetadata = networking.fetchRemoteMetadata(request.url, request.headers)
+            val expectedFileSize = remoteMetadata.contentLength
             var chunks: List<DownloadChunk>? = null
 
             if (expectedFileSize == null) {
@@ -44,7 +57,7 @@ internal class SteadyFetchController(private val application: Application) {
             } else {
                 Log.d(Constants.TAG, "Expected file size $expectedFileSize bytes")
                 fileManager.validateStorageCapacity(request.downloadDir, expectedFileSize)
-                if (networking.doesServerSupportChunking(request.url, request.headers)) {
+                if (remoteMetadata.supportsRanges) {
                     chunks = chunkManager.generateChunks(request.fileName, expectedFileSize)
                 } else {
                     Log.i(Constants.TAG, "Chunked transfer not supported, downloading whole file")
