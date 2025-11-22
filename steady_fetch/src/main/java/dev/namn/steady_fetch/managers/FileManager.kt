@@ -12,17 +12,14 @@ internal class FileManager() {
         val requiredBytes = (expectedBytes * Constants.STORAGE_SAFETY_MARGIN_PERCENT).toLong()
 
         if (availableBytes < requiredBytes) {
-            val message = "Insufficient storage space. " +
-                    "Required: ${formatBytesToHumanReadable(requiredBytes)}, " +
-                    "Available: ${formatBytesToHumanReadable(availableBytes)}"
-            Log.e(Constants.TAG_FILE_MANAGER, message)
+            val message = "Insufficient storage. required=${formatBytesToHumanReadable(requiredBytes)}, available=${formatBytesToHumanReadable(availableBytes)}"
+            Log.e(Constants.TAG, message)
             throw IllegalStateException(message)
         }
 
         Log.d(
-            Constants.TAG_FILE_MANAGER,
-            "Storage check passed. Available: ${formatBytesToHumanReadable(availableBytes)}, " +
-                    "Required: ${formatBytesToHumanReadable(requiredBytes)}"
+            Constants.TAG,
+            "Storage verified. available=${formatBytesToHumanReadable(availableBytes)} required=${formatBytesToHumanReadable(requiredBytes)}"
         )
     }
 
@@ -30,9 +27,12 @@ internal class FileManager() {
         if (!dir.exists()) {
             if (!dir.mkdirs() && !dir.exists()) {
                 val message = "Unable to create directory: ${dir.absolutePath}"
-                Log.e(Constants.TAG_FILE_MANAGER, message)
+                Log.e(Constants.TAG, message)
                 throw IOException(message)
             }
+            Log.i(Constants.TAG, "Created directory ${dir.absolutePath}")
+        } else {
+            Log.d(Constants.TAG, "Directory already exists ${dir.absolutePath}")
         }
     }
 

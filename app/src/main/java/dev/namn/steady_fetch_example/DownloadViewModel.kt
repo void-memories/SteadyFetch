@@ -6,28 +6,22 @@ import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.namn.steady_fetch.SteadyFetch
+import dev.namn.steady_fetch.SteadyFetchCallback
+import dev.namn.steady_fetch.datamodels.DownloadError
+import dev.namn.steady_fetch.datamodels.DownloadProgress
 import dev.namn.steady_fetch.datamodels.DownloadRequest
 import dev.namn.steady_fetch.datamodels.DownloadStatus
-import dev.namn.steady_fetch.managers.ChunkManager
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
-import kotlin.math.roundToLong
-
-private const val MIN_CHUNK_SIZE_MB = 1f
-private const val MAX_CHUNK_SIZE_MB = 20f
-private const val DEFAULT_CHUNK_SIZE_MB = 5f
 
 data class ChunkProgressUi(
     val name: String,
     val index: Int,
-    val downloadedBytes: Long,
-    val expectedBytes: Long?,
-    val progress: Float
+    val progress: Float,
+    val status: DownloadStatus
 )
 
 data class DownloadUiState(
@@ -36,10 +30,8 @@ data class DownloadUiState(
     val downloadId: Long? = null,
     val status: DownloadStatus? = null,
     val errorMessage: String? = null,
-    val totalBytes: Long? = null,
     val overallProgress: Float = 0f,
-    val chunkProgress: List<ChunkProgressUi> = emptyList(),
-    val preferredChunkSizeMb: Float = DEFAULT_CHUNK_SIZE_MB
+    val chunkProgress: List<ChunkProgressUi> = emptyList()
 )
 
 class DownloadViewModel(application: Application) : AndroidViewModel(application) {
@@ -47,15 +39,8 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
     private val _uiState = MutableStateFlow(DownloadUiState())
     val uiState: StateFlow<DownloadUiState> = _uiState
 
-    private var monitorJob: Job? = null
-
     fun updateUrl(url: String) {
         _uiState.update { it.copy(url = url, errorMessage = null) }
-    }
-
-    fun updateChunkSizeMb(value: Float) {
-        val clamped = value.coerceIn(MIN_CHUNK_SIZE_MB, MAX_CHUNK_SIZE_MB)
-        _uiState.update { it.copy(preferredChunkSizeMb = clamped) }
     }
 
     fun queueDownload() {
@@ -65,79 +50,54 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        val chunkSizeBytes = (_uiState.value.preferredChunkSizeMb * 1024f * 1024f).roundToLong()
         val outputDir = resolveOutputDirectory()
         val fileName = deriveFileName(url)
         val request = DownloadRequest(
             url = url,
             headers = emptyMap(),
-            maxParallelChunks = 4,
-            preferredChunkSizeBytes = chunkSizeBytes,
+            maxParallelDownloads = 4,
             downloadDir = outputDir,
-            fileName = fileName,
-            chunks = null
+            fileName = fileName
         )
 
-        monitorJob?.cancel()
+        val callback = createCallback()
 
         viewModelScope.launch {
-            val downloadId = SteadyFetch.queueDownload(request)
-            if (downloadId == null) {
-                _uiState.update { it.copy(errorMessage = "Failed to queue download", isDownloading = false) }
-                return@launch
-            }
-
             _uiState.update {
                 it.copy(
-                    downloadId = downloadId,
                     isDownloading = true,
                     errorMessage = null,
                     status = DownloadStatus.QUEUED,
-                    totalBytes = null,
                     overallProgress = 0f,
                     chunkProgress = emptyList()
                 )
             }
 
-            monitorJob = viewModelScope.launch {
-                while (true) {
-                    val response = SteadyFetch.queryDownloadStatus(downloadId)
-                    val chunkProgressUi = response.chunks.mapIndexed { index, chunkProgress ->
-                        ChunkProgressUi(
-                            name = chunkProgress.chunk.name,
-                            index = index,
-                            downloadedBytes = chunkProgress.downloadedBytes,
-                            expectedBytes = ChunkManager.calculateExpectedBytesFromProgress(chunkProgress),
-                            progress = chunkProgress.progress.coerceIn(0f, 1f)
-                        )
-                    }
-
-                    val totalBytes = chunkProgressUi.firstNotNullOfOrNull { it.expectedBytes }
-                    val overallProgress = ChunkManager.calculateOverallDownloadProgress(response.chunks)
-
+            try {
+                val downloadId = SteadyFetch.queueDownload(request, callback)
+                if (downloadId == null) {
                     _uiState.update {
                         it.copy(
-                            status = response.status,
-                            totalBytes = totalBytes,
-                            overallProgress = overallProgress,
-                            chunkProgress = chunkProgressUi,
-                            isDownloading = response.status == DownloadStatus.RUNNING || response.status == DownloadStatus.QUEUED
+                            errorMessage = "Failed to queue download",
+                            isDownloading = false,
+                            status = DownloadStatus.FAILED,
+                            downloadId = null
                         )
                     }
+                    return@launch
+                }
 
-                    if (response.status == DownloadStatus.SUCCESS || response.status == DownloadStatus.FAILED) {
-                        break
-                    }
-
-                    delay(1_000)
+                _uiState.update { it.copy(downloadId = downloadId) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        errorMessage = e.message ?: "Failed to queue download",
+                        isDownloading = false,
+                        status = DownloadStatus.FAILED
+                    )
                 }
             }
         }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        monitorJob?.cancel()
     }
 
     private fun resolveOutputDirectory(): File {
@@ -150,5 +110,54 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         return Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() } ?: "download.bin"
     }
 
-    fun chunkSizeRange(): ClosedFloatingPointRange<Float> = MIN_CHUNK_SIZE_MB..MAX_CHUNK_SIZE_MB
+    private fun createCallback(): SteadyFetchCallback {
+        return object : SteadyFetchCallback {
+            override fun onSuccess() {
+                postStateUpdate {
+                    it.copy(
+                        status = DownloadStatus.SUCCESS,
+                        overallProgress = 1f,
+                        isDownloading = false
+                    )
+                }
+            }
+
+            override fun onUpdate(progress: DownloadProgress) {
+                val chunkProgressUi = progress.chunkProgress.mapIndexed { index, chunk ->
+                    ChunkProgressUi(
+                        name = chunk.name,
+                        index = index,
+                        progress = chunk.progress.coerceIn(0f, 1f),
+                        status = chunk.status
+                    )
+                }
+
+                postStateUpdate {
+                    it.copy(
+                        status = progress.status,
+                        overallProgress = progress.progress.coerceIn(0f, 1f),
+                        chunkProgress = chunkProgressUi,
+                        isDownloading = progress.status == DownloadStatus.RUNNING || progress.status == DownloadStatus.QUEUED,
+                        errorMessage = null
+                    )
+                }
+            }
+
+            override fun onError(error: DownloadError) {
+                postStateUpdate {
+                    it.copy(
+                        status = DownloadStatus.FAILED,
+                        isDownloading = false,
+                        errorMessage = error.message.ifEmpty { "Download failed" }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun postStateUpdate(block: (DownloadUiState) -> DownloadUiState) {
+        viewModelScope.launch {
+            _uiState.update(block)
+        }
+    }
 }

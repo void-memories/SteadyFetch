@@ -11,54 +11,53 @@ import dev.namn.steady_fetch.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.datamodels.DownloadRequest
 import dev.namn.steady_fetch.io.Networking
 import dev.namn.steady_fetch.managers.FileManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
-/**
- * 1. store current nanos = downloadId
- * 2. get total bytes to download
- * 2. check free space on device
- * 3. calculate list of start and end range headers on the basis of chunks
- * 4. calculate file names of all the chunks
- * 5. launch coroutines
- * 6. call okhttp wrapper class for chunked downloading
- * 7. reconsilation of the parts
- * 8. md5 verification
- * 9. if true: delete parts
- *    else: delete parts + reconsilation
- */
 internal class SteadyFetchController(private val application: Application) {
     private val okHttpClient = OkHttpClient()
     private val fileManager = FileManager()
     private val networking = Networking(okHttpClient)
     private val chunkManager = ChunkManager()
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {
         val downloadId = SystemClock.elapsedRealtimeNanos()
+        Log.i(Constants.TAG, "queueDownload id=$downloadId url=${request.url}")
 
         if (request.maxParallelDownloads > Constants.MAX_PARALLEL_CHUNKS) {
-            throw Exception("maxParallelChunks must not exceed ${Constants.MAX_PARALLEL_CHUNKS}")
+            Log.e(Constants.TAG, "maxParallelDownloads exceeded: ${request.maxParallelDownloads}")
+            throw Exception("maxParallelDownloads must not exceed ${Constants.MAX_PARALLEL_CHUNKS}")
         }
 
-        fileManager.createDirectoryIfNotExists(request.downloadDir)
+        ioScope.launch {
+            fileManager.createDirectoryIfNotExists(request.downloadDir)
 
-        val expectedFileSize = networking.getExpectedFileSize(request.url, request.headers)
-        var chunks: List<DownloadChunk>? = null
+            val expectedFileSize = networking.getExpectedFileSize(request.url, request.headers)
+            var chunks: List<DownloadChunk>? = null
 
-        if (expectedFileSize == null) {
-            Log.i(Constants.TAG, "Storage check skipped: content length unknown")
-        } else {
-            fileManager.validateStorageCapacity(request.downloadDir, expectedFileSize)
-            if (networking.doesServerSupportChunking(request.url, request.headers)) {
-                chunks = chunkManager.generateChunks(request.fileName, expectedFileSize)
+            if (expectedFileSize == null) {
+                Log.w(Constants.TAG, "Content length unknown, skipping storage validation")
+            } else {
+                Log.d(Constants.TAG, "Expected file size $expectedFileSize bytes")
+                fileManager.validateStorageCapacity(request.downloadDir, expectedFileSize)
+                if (networking.doesServerSupportChunking(request.url, request.headers)) {
+                    chunks = chunkManager.generateChunks(request.fileName, expectedFileSize)
+                } else {
+                    Log.i(Constants.TAG, "Chunked transfer not supported, downloading whole file")
+                }
             }
+
+            val metadata = DownloadMetadata(
+                request = request,
+                chunks = chunks
+            )
+
+            networking.download(metadata, callback)
         }
-
-        val metadata = DownloadMetadata(
-            request = request,
-            chunks = chunks
-        )
-
-        networking.download(metadata, callback)
         return downloadId
     }
 }

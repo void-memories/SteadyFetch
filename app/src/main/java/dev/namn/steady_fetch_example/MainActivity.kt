@@ -23,9 +23,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
@@ -59,8 +56,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.namn.steady_fetch.datamodels.DownloadStatus
 import dev.namn.steady_fetch_example.ui.theme.SteadyFetchExampleTheme
-import java.text.NumberFormat
-import java.util.Locale
 import kotlin.math.roundToInt
 
 private val BackgroundTopColor = Color(0xFF090B13)
@@ -144,7 +139,6 @@ private fun DownloadScreenBody(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             progress = progress,
             status = status,
-            totalBytes = uiState.totalBytes,
             isDownloading = uiState.isDownloading,
             onAddClick = { showUrlDialog = true }
         )
@@ -231,7 +225,6 @@ private fun BottomHud(
     modifier: Modifier = Modifier,
     progress: Float,
     status: DownloadStatus,
-    totalBytes: Long?,
     isDownloading: Boolean,
     onAddClick: () -> Unit
 ) {
@@ -272,13 +265,6 @@ private fun BottomHud(
                             style = MaterialTheme.typography.bodySmall,
                             color = HudAccentColor
                         )
-                        totalBytes?.let {
-                            Text(
-                                text = "· ${formatBytesForUi(it)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.5f)
-                            )
-                        }
                     }
                 }
                 
@@ -372,19 +358,6 @@ private fun UrlInputDialog(
     )
 }
 
-private fun formatBytesForUi(bytes: Long): String {
-    val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
-    val kb = bytes / 1024.0
-    val mb = kb / 1024.0
-    val gb = mb / 1024.0
-    return when {
-        gb >= 1 -> "${String.format(Locale.getDefault(), "%.2f", gb)} GB"
-        mb >= 1 -> "${String.format(Locale.getDefault(), "%.2f", mb)} MB"
-        kb >= 1 -> "${String.format(Locale.getDefault(), "%.2f", kb)} KB"
-        else -> "${numberFormat.format(bytes)} B"
-    }
-}
-
 @Preview(showBackground = true, backgroundColor = 0xFF05070F)
 @Composable
 private fun DownloadScreenPreview() {
@@ -394,12 +367,10 @@ private fun DownloadScreenPreview() {
             status = DownloadStatus.RUNNING,
             isDownloading = true,
             overallProgress = 0.58f,
-            totalBytes = 123_000_000,
-            preferredChunkSizeMb = 6f,
             chunkProgress = listOf(
-                ChunkProgressUi("chunk-1", 0, 2_000_000, 5_000_000, 0.4f),
-                ChunkProgressUi("chunk-2", 1, 4_500_000, 5_000_000, 0.9f),
-                ChunkProgressUi("chunk-3", 2, 1_000_000, 5_000_000, 0.2f)
+                ChunkProgressUi("chunk-1", 0, 0.4f, DownloadStatus.RUNNING),
+                ChunkProgressUi("chunk-2", 1, 0.9f, DownloadStatus.RUNNING),
+                ChunkProgressUi("chunk-3", 2, 0.2f, DownloadStatus.RUNNING)
             )
         )
         DownloadScreenBody(

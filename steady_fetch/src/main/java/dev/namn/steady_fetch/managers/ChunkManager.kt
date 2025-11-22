@@ -1,3 +1,5 @@
+import android.util.Log
+import dev.namn.steady_fetch.Constants
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import kotlin.math.ceil
 
@@ -7,6 +9,7 @@ class ChunkManager() {
 
         val chunkSize = getChunkSize(fileSize)
         val numChunks = ceil(fileSize / chunkSize.toDouble()).toLong()
+        Log.d(Constants.TAG, "Generating $numChunks chunks for $fileName chunkSize=${chunkSize / 1024}KB")
 
         return (0 until numChunks).map { i ->
             val start = i * chunkSize

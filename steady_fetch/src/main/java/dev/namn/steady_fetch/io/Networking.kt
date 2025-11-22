@@ -1,6 +1,8 @@
 package dev.namn.steady_fetch.io
 
+import android.util.Log
 import dev.namn.steady_fetch.ChunkProgressTracker
+import dev.namn.steady_fetch.Constants
 import dev.namn.steady_fetch.SteadyFetchCallback
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadChunkProgress
@@ -31,9 +33,12 @@ class Networking(
         return try {
             val request = buildHeadRequest(url, headers)
             okHttpClient.newCall(request).execute().use { response ->
-                response.header("Content-Length")?.toLongOrNull()
+                val size = response.header("Content-Length")?.toLongOrNull()
+                Log.d(Constants.TAG, "HEAD content-length for $url -> $size")
+                size
             }
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            Log.w(Constants.TAG, "HEAD content-length failed for $url", e)
             null
         }
     }
@@ -42,9 +47,12 @@ class Networking(
         return try {
             val request = buildHeadRequest(url, headers)
             okHttpClient.newCall(request).execute().use { response ->
-                response.header("Accept-Ranges")?.lowercase() == "bytes"
+                val supported = response.header("Accept-Ranges")?.lowercase() == "bytes"
+                Log.d(Constants.TAG, "Server chunk support for $url -> $supported")
+                supported
             }
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            Log.w(Constants.TAG, "HEAD chunk support failed for $url", e)
             false
         }
     }
@@ -58,9 +66,11 @@ class Networking(
         val destination = File(request.downloadDir, request.fileName)
 
         scope.launch {
+            Log.i(Constants.TAG, "Download started url=${request.url}")
             val chunks = downloadMetadata.chunks
 
             if (chunks.isNullOrEmpty()) {
+                Log.d(Constants.TAG, "Starting single file download for ${request.url}")
                 downloadSingleFile(
                     semaphore = semaphore,
                     url = request.url,
@@ -69,6 +79,7 @@ class Networking(
                     callback = callback
                 )
             } else {
+                Log.d(Constants.TAG, "Starting chunked download chunks=${chunks.size} url=${request.url}")
                 downloadInChunks(
                     semaphore = semaphore,
                     chunks = chunks,
@@ -145,6 +156,7 @@ class Networking(
     ) {
         okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
+                Log.e(Constants.TAG, "HTTP ${response.code} for ${request.url}")
                 throw IOException("Request failed with HTTP ${response.code}")
             }
 
@@ -152,7 +164,7 @@ class Networking(
 
             body.byteStream().use { input ->
                 FileOutputStream(destination).use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    val buffer = ByteArray(Constants.DEFAULT_BUFFER_SIZE)
                     var bytesCopied = 0L
 
                     while (true) {
@@ -175,6 +187,7 @@ class Networking(
         callback: SteadyFetchCallback
     ) {
         semaphore.withPermit {
+            Log.d(Constants.TAG, "Single file download running url=$url")
             callback.emitProgress(
                 status = DownloadStatus.RUNNING,
                 chunkProgress = emptyList(),
@@ -189,8 +202,10 @@ class Networking(
                     chunkProgress = emptyList(),
                     overrideProgress = 1f
                 )
+                Log.i(Constants.TAG, "Single file download completed url=$url")
                 callback.onSuccess()
             } catch (e: Exception) {
+                Log.e(Constants.TAG, "Single file download failed url=$url", e)
                 callback.emitProgress(
                     status = DownloadStatus.FAILED,
                     chunkProgress = emptyList(),
@@ -218,6 +233,7 @@ class Networking(
         val completedChunks = AtomicInteger(0)
         val tracker = ChunkProgressTracker(chunks)
 
+        Log.d(Constants.TAG, "Chunked download queued ${chunks.size} chunks")
         callback.emitProgress(
             status = DownloadStatus.QUEUED,
             chunkProgress = tracker.snapshot()
@@ -228,6 +244,7 @@ class Networking(
                 semaphore.withPermit {
                     if (completionSignal.get()) return@withPermit
 
+                    Log.d(Constants.TAG, "Downloading chunk ${chunk.name}")
                     callback.emitProgress(
                         status = DownloadStatus.RUNNING,
                         chunkProgress = tracker.markRunning(index)
@@ -259,9 +276,11 @@ class Networking(
                         callback.emitProgress(status, snapshot)
 
                         if (allFinished && completionSignal.compareAndSet(false, true)) {
+                            Log.i(Constants.TAG, "All chunks completed")
                             callback.onSuccess()
                         }
                     } catch (e: Exception) {
+                        Log.e(Constants.TAG, "Chunk ${chunk.name} failed", e)
                         val snapshot = tracker.markFailed(index)
 
                         callback.emitProgress(
