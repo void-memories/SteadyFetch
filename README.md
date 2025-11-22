@@ -65,7 +65,7 @@ dependencies {
 }
 ```
 
-Latest versions are listed on [jitpack.io/#void-memories/SteadyFetch](https://jitpack.io/#void-memories/SteadyFetch). Until an official release ships, use `0.1.0-SNAPSHOT`.
+Latest versions are listed on [jitpack.io/#void-memories/SteadyFetch](https://jitpack.io/#void-memories/SteadyFetch)
 
 ---
 
