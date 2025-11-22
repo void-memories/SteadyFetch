@@ -42,6 +42,9 @@ internal class DownloadForegroundService : Service() {
                     stopAndRemove(notificationId)
                 }
             }
+            ACTION_CANCEL -> {
+                stopAndRemove(notificationId)
+            }
             else -> {
                 // Ignore unknown action
             }
@@ -122,6 +125,7 @@ internal class DownloadForegroundService : Service() {
 
         const val ACTION_START = "dev.namn.steady_fetch.action.START"
         const val ACTION_UPDATE = "dev.namn.steady_fetch.action.UPDATE"
+        const val ACTION_CANCEL = "dev.namn.steady_fetch.action.CANCEL"
 
         const val EXTRA_DOWNLOAD_ID = "extra_download_id"
         const val EXTRA_FILE_NAME = "extra_file_name"

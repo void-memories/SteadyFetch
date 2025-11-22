@@ -17,11 +17,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -36,6 +39,7 @@ internal class Networking(
     )
 
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+    private val activeCalls = ConcurrentHashMap<Long, MutableSet<Call>>()
 
     fun fetchRemoteMetadata(url: String, headers: Map<String, String>): RemoteMetadata {
         val probeResult = tryRangeProbe(url, headers)
@@ -57,6 +61,7 @@ internal class Networking(
     }
 
     fun download(
+        downloadId: Long,
         downloadMetadata: DownloadMetadata,
         callback: SteadyFetchCallback
     ) {
@@ -72,6 +77,7 @@ internal class Networking(
                 Log.d(Constants.TAG, "Starting single file download for ${request.url}")
                 downloadSingleFile(
                     semaphore = semaphore,
+                    downloadId = downloadId,
                     url = request.url,
                     headers = request.headers,
                     destination = destination,
@@ -82,6 +88,7 @@ internal class Networking(
                 Log.d(Constants.TAG, "Starting chunked download chunks=${chunks.size} url=${request.url}")
                 downloadInChunks(
                     semaphore = semaphore,
+                    downloadId = downloadId,
                     chunks = chunks,
                     url = request.url,
                     headers = request.headers,
@@ -111,15 +118,17 @@ internal class Networking(
     }
 
     private fun downloadFile(
+        downloadId: Long,
         url: String,
         headers: Map<String, String>,
         destination: File
     ) {
         val request = buildRequest(url, headers)
-        downloadToFile(request, destination)
+        downloadToFile(downloadId, request, destination)
     }
 
     private fun downloadChunkToFile(
+        downloadId: Long,
         url: String,
         headers: Map<String, String>,
         downloadDir: File,
@@ -140,6 +149,7 @@ internal class Networking(
         }
 
         downloadToFile(
+            downloadId = downloadId,
             request = request,
             destination = chunkFile,
             append = resumeBytes > 0
@@ -153,38 +163,46 @@ internal class Networking(
     }
 
     private fun downloadToFile(
+        downloadId: Long,
         request: Request,
         destination: File,
         append: Boolean = false,
         progressListener: ((Long) -> Unit)? = null
     ) {
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                Log.e(Constants.TAG, "HTTP ${response.code} for ${request.url}")
-                throw IOException("Request failed with HTTP ${response.code}")
-            }
+        val call = okHttpClient.newCall(request)
+        registerCall(downloadId, call)
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e(Constants.TAG, "HTTP ${response.code} for ${request.url}")
+                    throw IOException("Request failed with HTTP ${response.code}")
+                }
 
-            val body = response.body ?: throw IOException("Empty response body")
+                val body = response.body ?: throw IOException("Empty response body")
 
-            body.byteStream().use { input ->
-                FileOutputStream(destination, append).use { output ->
-                    val buffer = ByteArray(Constants.DEFAULT_BUFFER_SIZE)
-                    var bytesCopied = 0L
+                body.byteStream().use { input ->
+                    FileOutputStream(destination, append).use { output ->
+                        val buffer = ByteArray(Constants.DEFAULT_BUFFER_SIZE)
+                        var bytesCopied = 0L
 
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read == -1) break
-                        output.write(buffer, 0, read)
-                        bytesCopied += read
-                        progressListener?.invoke(bytesCopied)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            output.write(buffer, 0, read)
+                            bytesCopied += read
+                            progressListener?.invoke(bytesCopied)
+                        }
                     }
                 }
             }
+        } finally {
+            unregisterCall(downloadId, call)
         }
     }
 
     private suspend fun downloadSingleFile(
         semaphore: Semaphore,
+        downloadId: Long,
         url: String,
         headers: Map<String, String>,
         destination: File,
@@ -200,7 +218,7 @@ internal class Networking(
             )
 
             try {
-                downloadFile(url, headers, destination)
+                downloadFile(downloadId, url, headers, destination)
                 if (!fileManager.verifyMd5(destination, expectedMd5)) {
                     throw IOException("MD5 verification failed for ${destination.name}")
                 }
@@ -231,6 +249,7 @@ internal class Networking(
 
     private suspend fun downloadInChunks(
         semaphore: Semaphore,
+        downloadId: Long,
         chunks: List<DownloadChunk>,
         url: String,
         headers: Map<String, String>,
@@ -306,6 +325,7 @@ internal class Networking(
 
                     try {
                         downloadChunkToFile(
+                            downloadId = downloadId,
                             url = url,
                             headers = headers,
                             downloadDir = downloadDir,
@@ -398,6 +418,28 @@ private data class ChunkResumeState(
 ) {
     enum class State { EMPTY, PARTIAL, COMPLETE }
 }
+
+    private fun registerCall(downloadId: Long, call: Call) {
+        activeCalls.compute(downloadId) { _, existing ->
+            (existing ?: Collections.newSetFromMap(ConcurrentHashMap())).apply {
+                add(call)
+            }
+        }
+    }
+
+    private fun unregisterCall(downloadId: Long, call: Call) {
+        val calls = activeCalls[downloadId] ?: return
+        calls.remove(call)
+        if (calls.isEmpty()) {
+            activeCalls.remove(downloadId, calls)
+        }
+    }
+
+    fun cancel(downloadId: Long): Boolean {
+        val calls = activeCalls.remove(downloadId) ?: return false
+        calls.forEach { it.cancel() }
+        return calls.isNotEmpty()
+    }
 
     private fun SteadyFetchCallback.emitProgress(
         status: DownloadStatus,

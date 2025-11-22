@@ -15,11 +15,14 @@ import dev.namn.steady_fetch.impl.datamodels.DownloadError
 import dev.namn.steady_fetch.impl.io.Networking
 import dev.namn.steady_fetch.impl.managers.FileManager
 import dev.namn.steady_fetch.impl.notifications.DownloadNotificationManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import java.util.concurrent.ConcurrentHashMap
 
 internal class SteadyFetchController(private val application: Application) {
     private val okHttpClient = OkHttpClient()
@@ -28,6 +31,7 @@ internal class SteadyFetchController(private val application: Application) {
     private val chunkManager = ChunkManager()
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val notificationManager = DownloadNotificationManager(application)
+    private val activeJobs = ConcurrentHashMap<Long, Job>()
 
     fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {
         val downloadId = SystemClock.elapsedRealtimeNanos()
@@ -72,7 +76,7 @@ internal class SteadyFetchController(private val application: Application) {
 
         notificationManager.start(downloadId, request.fileName)
 
-        ioScope.launch {
+        val job = ioScope.launch {
             fileManager.createDirectoryIfNotExists(request.downloadDir)
 
             val remoteMetadata = networking.fetchRemoteMetadata(request.url, request.headers)
@@ -97,8 +101,24 @@ internal class SteadyFetchController(private val application: Application) {
                 contentMd5 = remoteMetadata.contentMd5
             )
 
-            networking.download(metadata, decoratedCallback)
+            networking.download(downloadId, metadata, decoratedCallback)
+        }
+        activeJobs[downloadId] = job
+        job.invokeOnCompletion {
+            activeJobs.remove(downloadId)
+            networking.cancel(downloadId)
         }
         return downloadId
+    }
+
+    fun cancel(downloadId: Long): Boolean {
+        val job = activeJobs.remove(downloadId)
+        val jobCancelled = job?.let {
+            it.cancel(CancellationException("User cancelled download $downloadId"))
+            true
+        } ?: false
+        val networkCancelled = networking.cancel(downloadId)
+        notificationManager.cancel(downloadId)
+        return jobCancelled || networkCancelled
     }
 }

@@ -38,9 +38,9 @@ object SteadyFetch {
         }
     }
 
-    suspend fun cancelDownload(downloadId: Long): Boolean {
-        Log.w(Constants.TAG, "cancelDownload not implemented. id=$downloadId")
-        return false
+    fun cancelDownload(downloadId: Long): Boolean {
+        ensureInitialized()
+        return steadyFetchController?.cancel(downloadId) ?: false
     }
 
     private fun ensureInitialized() {

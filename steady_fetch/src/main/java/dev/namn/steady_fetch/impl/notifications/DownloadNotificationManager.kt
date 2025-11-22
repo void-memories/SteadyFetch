@@ -28,4 +28,12 @@ internal class DownloadNotificationManager(
         }
         ContextCompat.startForegroundService(application, intent)
     }
+
+    fun cancel(downloadId: Long) {
+        val intent = Intent(application, DownloadForegroundService::class.java).apply {
+            action = DownloadForegroundService.ACTION_CANCEL
+            putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
+        }
+        ContextCompat.startForegroundService(application, intent)
+    }
 }
