@@ -4,7 +4,7 @@ import ChunkManager
 import android.app.Application
 import android.os.SystemClock
 import android.util.Log
-import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.uilts.Constants
 import dev.namn.steady_fetch.SteadyFetchCallback
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadMetadata

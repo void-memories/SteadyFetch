@@ -1,6 +1,6 @@
 package dev.namn.steady_fetch.extensions
 
-import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.uilts.Constants
 import dev.namn.steady_fetch.datamodels.DownloadError
 import kotlinx.coroutines.CancellationException
 

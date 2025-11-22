@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import dev.namn.steady_fetch.core.SteadyFetchController
 import dev.namn.steady_fetch.datamodels.DownloadRequest
+import dev.namn.steady_fetch.uilts.Constants
 import java.util.concurrent.atomic.AtomicBoolean
 
 object SteadyFetch {

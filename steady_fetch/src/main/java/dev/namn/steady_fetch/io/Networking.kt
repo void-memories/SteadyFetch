@@ -1,9 +1,9 @@
 package dev.namn.steady_fetch.io
 
 import android.util.Log
-import dev.namn.steady_fetch.ChunkProgressTracker
+import dev.namn.steady_fetch.managers.ChunkProgressManager
 import dev.namn.steady_fetch.SteadyFetchCallback
-import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.uilts.Constants
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadChunkProgress
 import dev.namn.steady_fetch.datamodels.DownloadError
@@ -239,7 +239,7 @@ internal class Networking(
         expectedMd5: String?,
         callback: SteadyFetchCallback
     ) = coroutineScope {
-        val tracker = ChunkProgressTracker(chunks)
+        val tracker = ChunkProgressManager(chunks)
         val resumeStates = mutableListOf<ChunkResumeState>()
         var initialCompleted = 0
         chunks.forEachIndexed { index, chunk ->

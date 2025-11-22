@@ -2,7 +2,7 @@ package dev.namn.steady_fetch.managers
 
 import android.os.StatFs
 import android.util.Log
-import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.uilts.Constants
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import java.io.File
 import java.io.FileInputStream

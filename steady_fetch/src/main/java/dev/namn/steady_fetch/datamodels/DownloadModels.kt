@@ -2,6 +2,18 @@ package dev.namn.steady_fetch.datamodels
 
 import java.io.File
 
+data class DownloadError(
+    val code: Int,
+    val message: String
+)
+
+enum class DownloadStatus {
+    QUEUED,
+    RUNNING,
+    FAILED,
+    SUCCESS
+}
+
 data class DownloadRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),

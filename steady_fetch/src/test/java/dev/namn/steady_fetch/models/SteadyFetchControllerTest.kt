@@ -1,7 +1,7 @@
 package dev.namn.steady_fetch.models
 
 import android.app.Application
-import dev.namn.steady_fetch.Constants.DEFAULT_CHUNK_SIZE_BYTES
+import dev.namn.steady_fetch.uilts.Constants.DEFAULT_CHUNK_SIZE_BYTES
 import io.mockk.mockk
 import org.junit.Test
 import org.junit.Assert.*

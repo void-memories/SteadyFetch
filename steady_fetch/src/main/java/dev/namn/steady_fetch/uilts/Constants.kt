@@ -1,4 +1,4 @@
-package dev.namn.steady_fetch
+package dev.namn.steady_fetch.uilts
 
 internal object Constants {
     const val TAG = "STEADY_FETCH"
