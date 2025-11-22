@@ -20,3 +20,28 @@ data class DownloadChunk(
     val start: Long,
     val end: Long,
 )
+
+data class SteadyFetchError(
+    val code: Int,
+    val message: String
+)
+
+data class DownloadProgress(
+    val status: DownloadStatus,
+    val progress: Float,
+    val chunkProgress: List<DownloadChunkProgress>
+)
+
+data class DownloadChunkProgress(
+    val status: DownloadStatus,
+    val name: String,
+    val progress: Float
+) {
+    fun updateProgress(progress: Float): DownloadChunkProgress {
+        return DownloadChunkProgress(this.status, this.name, progress)
+    }
+
+    fun updateStatus(status: DownloadStatus): DownloadChunkProgress {
+        return DownloadChunkProgress(status, this.name, this.progress)
+    }
+}

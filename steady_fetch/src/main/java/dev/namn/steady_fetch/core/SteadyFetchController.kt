@@ -5,13 +5,12 @@ import android.app.Application
 import android.os.SystemClock
 import android.util.Log
 import dev.namn.steady_fetch.Constants
+import dev.namn.steady_fetch.SteadyFetchCallback
 import dev.namn.steady_fetch.datamodels.DownloadChunk
 import dev.namn.steady_fetch.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.datamodels.DownloadRequest
-import dev.namn.steady_fetch.datamodels.DownloadStatus
 import dev.namn.steady_fetch.io.Networking
 import dev.namn.steady_fetch.managers.FileManager
-import dev.namn.steady_fetch.progress.DownloadStore
 
 /**
  * 1. store current nanos = downloadId
@@ -27,12 +26,11 @@ import dev.namn.steady_fetch.progress.DownloadStore
  *    else: delete parts + reconsilation
  */
 internal class SteadyFetchController(private val application: Application) {
-    private val downloadStore = DownloadStore()
     private val fileManager = FileManager()
     private val networking = Networking()
     private val chunkManager = ChunkManager()
 
-    fun queueDownload(request: DownloadRequest): Long {
+    fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {
         val downloadId = SystemClock.elapsedRealtimeNanos()
 
         if (request.maxParallelDownloads > Constants.MAX_PARALLEL_CHUNKS) {
@@ -48,18 +46,17 @@ internal class SteadyFetchController(private val application: Application) {
             Log.i(Constants.TAG, "Storage check skipped: content length unknown")
         } else {
             fileManager.validateStorageCapacity(request.downloadDir, expectedFileSize)
-            if (networking.doesServerSupportChunking()) {
+            if (networking.doesServerSupportChunking(request.url, request.headers)) {
                 chunks = chunkManager.generateChunks(request.fileName, expectedFileSize)
-            } else {
-                //start normal download with progress
             }
         }
 
-        DownloadMetadata(
+        val metadata = DownloadMetadata(
             request = request,
             chunks = chunks
         )
 
+        networking.download(metadata, callback)
         return downloadId
     }
 }
