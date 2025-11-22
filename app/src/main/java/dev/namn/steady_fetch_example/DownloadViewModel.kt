@@ -77,18 +77,6 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
             try {
                 val downloadId = SteadyFetch.queueDownload(request, callback)
-                if (downloadId == null) {
-                    _uiState.update {
-                        it.copy(
-                            errorMessage = "Failed to queue download",
-                            isDownloading = false,
-                            status = DownloadStatus.FAILED,
-                            downloadId = null
-                        )
-                    }
-                    return@launch
-                }
-
                 _uiState.update { it.copy(downloadId = downloadId) }
             } catch (e: Exception) {
                 _uiState.update {

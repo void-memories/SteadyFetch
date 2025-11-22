@@ -15,6 +15,7 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.test.runTest
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -112,7 +113,9 @@ class NetworkingTest {
         val metadata = DownloadMetadata(request, chunks = null, contentMd5 = null)
         val callback = RecordingCallback()
 
-        networking.download(1L, metadata, callback)
+        runTest {
+            networking.download(1L, metadata, callback)
+        }
 
         assertTrue(callback.awaitSuccess())
         assertEquals("hello", File(downloadsDir, "hello.bin").readText())
@@ -147,7 +150,9 @@ class NetworkingTest {
         val metadata = DownloadMetadata(request, chunks = chunks, contentMd5 = null)
         val callback = RecordingCallback()
 
-        networking.download(2L, metadata, callback)
+        runTest {
+            networking.download(2L, metadata, callback)
+        }
 
         assertTrue(callback.awaitSuccess())
         assertEquals(body, File(downloadsDir, "chunk.bin").readText())

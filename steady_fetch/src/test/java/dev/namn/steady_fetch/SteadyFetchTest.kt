@@ -64,7 +64,7 @@ class SteadyFetchTest {
         assertEquals(99L, result)
     }
 
-    @Test(expected = Exception::class)
+    @Test(expected = IllegalStateException::class)
     fun queueDownload_throwsWhenNotInitialized() {
         val request = DownloadRequest(
             url = "https://example.com/file.bin",
@@ -83,7 +83,7 @@ class SteadyFetchTest {
         assertTrue(result)
     }
 
-    @Test(expected = RuntimeException::class)
+    @Test(expected = IllegalStateException::class)
     fun initialize_wrapsFailuresAsRuntimeException() {
         every { DependencyContainer.getInstance(application) } throws IllegalStateException("failed")
         SteadyFetch.initialize(application)

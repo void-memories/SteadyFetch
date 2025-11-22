@@ -1,7 +1,7 @@
 package dev.namn.steady_fetch.impl.extensions
 
 import dev.namn.steady_fetch.impl.datamodels.DownloadError
-import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.utils.Constants
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Test

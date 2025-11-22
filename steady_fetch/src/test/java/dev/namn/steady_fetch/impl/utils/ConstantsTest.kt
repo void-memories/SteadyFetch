@@ -1,4 +1,4 @@
-package dev.namn.steady_fetch.impl.uilts
+package dev.namn.steady_fetch.impl.utils
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

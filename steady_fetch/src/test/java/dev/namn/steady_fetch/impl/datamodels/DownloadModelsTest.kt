@@ -1,10 +1,11 @@
 package dev.namn.steady_fetch.impl.datamodels
 
+import dev.namn.steady_fetch.impl.utils.Constants
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class DownloadModelsTest {
 
@@ -17,6 +18,16 @@ class DownloadModelsTest {
         )
         assertTrue(request.headers.isEmpty())
         assertEquals(4, request.maxParallelDownloads)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun downloadRequest_rejectsParallelLimitAboveMax() {
+        DownloadRequest(
+            url = "https://example.com/file.bin",
+            downloadDir = File("/tmp"),
+            fileName = "file.bin",
+            maxParallelDownloads = Constants.MAX_PARALLEL_CHUNKS + 1
+        )
     }
 
     @Test

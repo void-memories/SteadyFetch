@@ -1,5 +1,6 @@
 package dev.namn.steady_fetch.impl.datamodels
 
+import dev.namn.steady_fetch.impl.utils.Constants
 import java.io.File
 
 data class DownloadError(
@@ -14,6 +15,9 @@ enum class DownloadStatus {
     SUCCESS
 }
 
+/**
+ * Defines a single download and how SteadyFetch should execute it.
+ */
 data class DownloadRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
@@ -39,6 +43,9 @@ data class SteadyFetchError(
     val message: String
 )
 
+/**
+ * Snapshot that is relayed back to client apps through [dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback].
+ */
 data class DownloadProgress(
     val status: DownloadStatus,
     val progress: Float,

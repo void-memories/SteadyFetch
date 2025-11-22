@@ -1,7 +1,5 @@
 package dev.namn.steady_fetch.impl.managers
 
-import ChunkManager
-
 import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

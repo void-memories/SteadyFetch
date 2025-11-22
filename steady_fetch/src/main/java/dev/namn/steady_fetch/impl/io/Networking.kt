@@ -3,7 +3,7 @@ package dev.namn.steady_fetch.impl.io
 import android.util.Log
 import dev.namn.steady_fetch.impl.managers.ChunkProgressManager
 import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
-import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.utils.Constants
 import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
 import dev.namn.steady_fetch.impl.datamodels.DownloadChunkProgress
 import dev.namn.steady_fetch.impl.datamodels.DownloadError
@@ -11,8 +11,6 @@ import dev.namn.steady_fetch.impl.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.impl.datamodels.DownloadProgress
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 import dev.namn.steady_fetch.impl.managers.FileManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -38,7 +36,6 @@ internal class Networking(
         val contentMd5: String?
     )
 
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
     private val activeCalls = ConcurrentHashMap<Long, MutableSet<Call>>()
 
     fun fetchRemoteMetadata(url: String, headers: Map<String, String>): RemoteMetadata {
@@ -60,7 +57,7 @@ internal class Networking(
         )
     }
 
-    fun download(
+    suspend fun download(
         downloadId: Long,
         downloadMetadata: DownloadMetadata,
         callback: SteadyFetchCallback
@@ -69,35 +66,33 @@ internal class Networking(
         val semaphore = Semaphore(request.maxParallelDownloads)
         val destination = File(request.downloadDir, request.fileName)
 
-        scope.launch {
-            Log.i(Constants.TAG, "Download started url=${request.url}")
-            val chunks = downloadMetadata.chunks
+        Log.i(Constants.TAG, "Download started url=${request.url}")
+        val chunks = downloadMetadata.chunks
 
-            if (chunks.isNullOrEmpty()) {
-                Log.d(Constants.TAG, "Starting single file download for ${request.url}")
-                downloadSingleFile(
-                    semaphore = semaphore,
-                    downloadId = downloadId,
-                    url = request.url,
-                    headers = request.headers,
-                    destination = destination,
-                    expectedMd5 = downloadMetadata.contentMd5,
-                    callback = callback
-                )
-            } else {
-                Log.d(Constants.TAG, "Starting chunked download chunks=${chunks.size} url=${request.url}")
-                downloadInChunks(
-                    semaphore = semaphore,
-                    downloadId = downloadId,
-                    chunks = chunks,
-                    url = request.url,
-                    headers = request.headers,
-                    downloadDir = request.downloadDir,
-                    fileName = request.fileName,
-                    expectedMd5 = downloadMetadata.contentMd5,
-                    callback = callback
-                )
-            }
+        if (chunks.isNullOrEmpty()) {
+            Log.d(Constants.TAG, "Starting single file download for ${request.url}")
+            downloadSingleFile(
+                semaphore = semaphore,
+                downloadId = downloadId,
+                url = request.url,
+                headers = request.headers,
+                destination = destination,
+                expectedMd5 = downloadMetadata.contentMd5,
+                callback = callback
+            )
+        } else {
+            Log.d(Constants.TAG, "Starting chunked download chunks=${chunks.size} url=${request.url}")
+            downloadInChunks(
+                semaphore = semaphore,
+                downloadId = downloadId,
+                chunks = chunks,
+                url = request.url,
+                headers = request.headers,
+                downloadDir = request.downloadDir,
+                fileName = request.fileName,
+                expectedMd5 = downloadMetadata.contentMd5,
+                callback = callback
+            )
         }
     }
 

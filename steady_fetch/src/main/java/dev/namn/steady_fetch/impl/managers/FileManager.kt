@@ -2,7 +2,7 @@ package dev.namn.steady_fetch.impl.managers
 
 import android.os.StatFs
 import android.util.Log
-import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.utils.Constants
 import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
 import java.io.File
 import java.io.FileInputStream
@@ -13,7 +13,7 @@ import java.security.MessageDigest
 internal class FileManager {
     fun validateStorageCapacity(destinationDir: File, expectedBytes: Long) {
         val availableBytes = StatFs(destinationDir.absolutePath).availableBytes
-        val requiredBytes = (expectedBytes * Constants.STORAGE_SAFETY_MARGIN_PERCENT).toLong()
+        val requiredBytes = (expectedBytes * Constants.STORAGE_SAFETY_MARGIN_MULTIPLIER).toLong()
 
         if (availableBytes < requiredBytes) {
             val message = "Insufficient storage. required=${formatBytesToHumanReadable(requiredBytes)}, available=${formatBytesToHumanReadable(availableBytes)}"

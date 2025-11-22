@@ -1,9 +1,8 @@
 package dev.namn.steady_fetch.impl.controllers
 
-import ChunkManager
 import android.os.SystemClock
 import android.util.Log
-import dev.namn.steady_fetch.impl.uilts.Constants
+import dev.namn.steady_fetch.impl.utils.Constants
 import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
 import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
 import dev.namn.steady_fetch.impl.datamodels.DownloadMetadata
@@ -13,6 +12,7 @@ import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 import dev.namn.steady_fetch.impl.datamodels.DownloadError
 import dev.namn.steady_fetch.impl.io.Networking
 import dev.namn.steady_fetch.impl.managers.FileManager
+import dev.namn.steady_fetch.impl.managers.ChunkManager
 import dev.namn.steady_fetch.impl.notifications.DownloadNotificationManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -33,9 +33,8 @@ internal class SteadyFetchController(
         val downloadId = SystemClock.elapsedRealtimeNanos()
         Log.i(Constants.TAG, "queueDownload id=$downloadId url=${request.url}")
 
-        if (request.maxParallelDownloads > Constants.MAX_PARALLEL_CHUNKS) {
-            Log.e(Constants.TAG, "maxParallelDownloads exceeded: ${request.maxParallelDownloads}")
-            throw Exception("maxParallelDownloads must not exceed ${Constants.MAX_PARALLEL_CHUNKS}")
+        require(request.maxParallelDownloads in 1..Constants.MAX_PARALLEL_CHUNKS) {
+            "maxParallelDownloads must be between 1 and ${Constants.MAX_PARALLEL_CHUNKS}"
         }
 
         val decoratedCallback = object : SteadyFetchCallback {

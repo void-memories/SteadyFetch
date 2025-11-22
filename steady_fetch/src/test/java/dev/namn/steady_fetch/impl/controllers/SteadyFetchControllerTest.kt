@@ -1,14 +1,16 @@
 package dev.namn.steady_fetch.impl.controllers
 
-import ChunkManager
 import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
 import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
 import dev.namn.steady_fetch.impl.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
 import dev.namn.steady_fetch.impl.io.Networking
+import dev.namn.steady_fetch.impl.managers.ChunkManager
 import dev.namn.steady_fetch.impl.managers.FileManager
 import dev.namn.steady_fetch.impl.notifications.DownloadNotificationManager
 import io.mockk.Runs
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -17,7 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -59,7 +60,7 @@ class SteadyFetchControllerTest {
     @Before
     fun setUp() {
         every { networking.fetchRemoteMetadata(any(), any()) } returns metadata
-        every { networking.download(any(), any(), any()) } just Runs
+        coEvery { networking.download(any(), any(), any()) } just Runs
         every { chunkManager.generateChunks(any(), any()) } returns chunks
     }
 
@@ -73,7 +74,7 @@ class SteadyFetchControllerTest {
         val id = controller.queueDownload(baseRequest, noopCallback())
         dispatcher.scheduler.advanceUntilIdle()
 
-        verify {
+        coVerify {
             networking.download(
                 id,
                 match<DownloadMetadata> { it.chunks == chunks && it.request == baseRequest },
@@ -88,12 +89,6 @@ class SteadyFetchControllerTest {
         dispatcher.scheduler.advanceUntilIdle()
 
         verify { fileManager.validateStorageCapacity(baseRequest.downloadDir, metadata.contentLength!!) }
-    }
-
-    @Test(expected = Exception::class)
-    fun queueDownload_throwsWhenParallelLimitExceeded() {
-        val request = baseRequest.copy(maxParallelDownloads = 26)
-        controller.queueDownload(request, noopCallback())
     }
 
     @Test

@@ -9,19 +9,30 @@
 
 SteadyFetch is a Kotlin-based Android SDK that turns downloads into an orchestrated op. It slices large payloads into coordinated chunks, persists progress, and recovers gracefully when networks misbehave. Use it to ship resumable, foreground-aware downloads without rewriting the transport stack for every app.
 
+### 🎯 Feature Signal
+
+- **Uninterrupted missions** – Foreground service keeps long transfers alive even through app kills or background restrictions.
+- **State persistence** – Chunk progress and metadata survive process death so downloads resume exactly where they stopped.
+- **Automatic resume** – Interrupted transfers reconnect, validate remote metadata, and continue without re-downloading bytes.
+- **Multi-connection mesh** – Parallel chunking squeezes every drop out of fast networks.
+- **Notification stack** – Low-noise progress + completion/error signals with POST_NOTIFICATION permission handling baked in.
+- **Pluggable dependency graph** – `DependencyContainer` wires in storage, networking, notifications, and can be swapped for custom stacks/tests.
+- **Battle-tested** – MockK, Robolectric, and MockWebServer suites cover callbacks, chunk math, IO, and failure paths.
+
 ---
 
 ## 📡 Index
 
-1. [Signal at a Glance](#signal-at-a-glance)
-2. [Bootstrapping the SDK](#bootstrapping-the-sdk)
-3. [Quick Deploy](#quick-deploy)
-4. [Feature Loadout](#feature-loadout)
-5. [Development Logbook](#development-logbook)
-6. [Release Ritual](#release-ritual)
-7. [FAQ](#faq-from-the-ops-vault)
-8. [Field Notes & Contributions](#field-notes--contributions)
-9. [License](#license)
+1. [Feature Signal](#-feature-signal)
+2. [Signal at a Glance](#-signal-at-a-glance)
+3. [Bootstrapping the SDK](#%EF%B8%8F-bootstrapping-the-sdk)
+4. [Quick Deploy](#-quick-deploy)
+5. [Feature Loadout](#%F0%9F%A7%A9-feature-loadout)
+6. [Development Logbook](#-development-logbook)
+7. [Release Ritual](#%F0%9F%9B%B0%EF%B8%8F-release-ritual)
+8. [FAQ](#-faq-from-the-ops-vault)
+9. [Field Notes & Contributions](#%F0%9F%97%92%EF%B8%8F-field-notes--contributions)
+10. [License](#-license)
 
 ---
 
@@ -82,12 +93,12 @@ val downloadId = SteadyFetch.queueDownload(
     request = DownloadRequest(
         url = "https://files.example.com/iso/latest.iso",
         fileName = "latest.iso",
-        destination = File(context.filesDir, "latest.iso")
+        downloadDir = File(context.filesDir, "downloads")
     ),
     callback = object : SteadyFetchCallback {
-        override fun onChunkProgress(update: ChunkProgress) { /* UI pulse */ }
-        override fun onCompleted(result: DownloadResult.Success) { /* Mission accomplished */ }
-        override fun onError(error: DownloadResult.Failure) { /* Re-arm or abort */ }
+        override fun onSuccess() { /* Mission accomplished */ }
+        override fun onUpdate(progress: DownloadProgress) { /* UI pulse */ }
+        override fun onError(error: DownloadError) { /* Re-arm or abort */ }
     }
 )
 
@@ -156,7 +167,7 @@ Pull requests and issue reports are welcome. Please include:
 
 ## 📜 License
 
-TBD – until formalized, treat the repository as “look but don’t ship commercially.” Open an issue if you need clarity.
+SteadyFetch is distributed under the [MIT License](./LICENSE). Feel free to use it in commercial and open-source apps—just keep the copyright + permission notice intact.
 
 ---
 
