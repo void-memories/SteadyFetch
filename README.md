@@ -15,8 +15,6 @@ SteadyFetch is a Kotlin-based Android SDK that turns downloads into an orchestra
 - **State persistence** – Chunk progress and metadata survive process death so downloads resume exactly where they stopped.
 - **Automatic resume** – Interrupted transfers reconnect, validate remote metadata, and continue without re-downloading bytes.
 - **Multi-connection mesh** – Parallel chunking squeezes every drop out of fast networks.
-- **Notification stack** – Low-noise progress + completion/error signals with POST_NOTIFICATION permission handling baked in.
-- **Pluggable dependency graph** – `DependencyContainer` wires in storage, networking, notifications, and can be swapped for custom stacks/tests.
 - **Battle-tested** – MockK, Robolectric, and MockWebServer suites cover callbacks, chunk math, IO, and failure paths.
 
 ---
@@ -27,12 +25,7 @@ SteadyFetch is a Kotlin-based Android SDK that turns downloads into an orchestra
 2. [Signal at a Glance](#-signal-at-a-glance)
 3. [Bootstrapping the SDK](#%EF%B8%8F-bootstrapping-the-sdk)
 4. [Quick Deploy](#-quick-deploy)
-5. [Feature Loadout](#%F0%9F%A7%A9-feature-loadout)
-6. [Development Logbook](#-development-logbook)
-7. [Release Ritual](#%F0%9F%9B%B0%EF%B8%8F-release-ritual)
-8. [FAQ](#-faq-from-the-ops-vault)
-9. [Field Notes & Contributions](#%F0%9F%97%92%EF%B8%8F-field-notes--contributions)
-10. [License](#-license)
+5. [License](#-license)
 
 ---
 
@@ -110,68 +103,6 @@ SteadyFetch.cancelDownload(downloadId)
 
 ---
 
-## 🧩 Feature Loadout
-
-- **Chunked Execution** – `ChunkManager`, `ChunkProgressManager`, and `FileManager` coordinate segmented downloads with persistent offsets.
-- **Foreground Service Ready** – `DownloadForegroundService` + `DownloadNotificationManager` keep Android happy during long operations.
-- **Pluggable Networking** – OkHttp-backed IO with extension points for custom interceptors.
-- **Callback Grid** – `SteadyFetchCallback` broadcasts chunk progress, completion, and failure signals.
-- **DI Friendly** – `DependencyContainer` keeps stateful collaborators injectable for tests or custom wiring.
-
----
-
-## 📔 Development Logbook
-
-| Command | Purpose |
-|---------|---------|
-| `./gradlew steady_fetch:lintDebug` | Static analysis before committing |
-| `./gradlew steady_fetch:testReleaseUnitTest` | Unit test suite |
-| `./gradlew steady_fetch:publishReleasePublicationToMavenLocal` | Local Maven smoke-test (used by CI + JitPack) |
-
-Gradle caching is enabled globally (`org.gradle.caching=true`), so repeated runs stay lean.
-
----
-
-## 🛰️ Release Ritual
-
-1. Push your changes to `main`.
-2. Trigger **Release Check** in GitHub Actions → supply `release_version` (e.g., `1.2.0`).
-3. Workflow runs lint, tests, and validates the Maven publication with that version injected via `RELEASE_VERSION`.
-4. Tag the commit (`git tag v1.2.0 && git push origin v1.2.0`) so JitPack indexes the build.
-
-> JitPack additionally reads `jitpack.yml`, compiling with OpenJDK 17 and running the same publication task to stage the artifact.
-
----
-
-## ❔ FAQ (From the Ops Vault)
-
-- **Why JitPack?**  
-  Keeps distribution frictionless—consumers only need a Git tag.
-
-- **Can I customize notifications?**  
-  Swap out or extend `DownloadNotificationManager` with your own channels/style.
-
-- **What about multi-tenant downloads?**  
-  The `SteadyFetch` facade is thread-safe; queue as many concurrent requests as you like and cancel them individually by ID.
-
----
-
-## 🗒️ Field Notes & Contributions
-
-Pull requests and issue reports are welcome. Please include:
-
-1. A failing unit test (or a new one) that demonstrates the bug/feature.
-2. Explain the scenario in the PR description—log excerpts and repro steps earn extra hacker cred.
-
----
-
 ## 📜 License
 
 SteadyFetch is distributed under the [MIT License](./LICENSE). Feel free to use it in commercial and open-source apps—just keep the copyright + permission notice intact.
-
----
-
-Stay sharp, patch often, and may your downloads never drop.  
-
-`$ tail -f /var/log/steady-fetch`
-
