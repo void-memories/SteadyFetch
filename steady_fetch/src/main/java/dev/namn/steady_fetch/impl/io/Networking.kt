@@ -291,7 +291,9 @@ internal class Networking(
         )
 
         if (initialCompleted == chunks.size) {
-            finalizeChunks(downloadDir, fileName, chunks, expectedMd5, tracker.snapshot(), callback, completionSignal)
+            if (completionSignal.compareAndSet(false, true)) {
+                finalizeChunks(downloadDir, fileName, chunks, expectedMd5, tracker.snapshot(), callback)
+            }
             return@coroutineScope
         }
 
@@ -338,7 +340,10 @@ internal class Networking(
                         val allFinished = finished == chunks.size
 
                         if (allFinished) {
-                            finalizeChunks(downloadDir, fileName, chunks, expectedMd5, snapshot, callback, completionSignal)
+                            // Only one coroutine should finalize - use completionSignal to prevent race condition
+                            if (completionSignal.compareAndSet(false, true)) {
+                                finalizeChunks(downloadDir, fileName, chunks, expectedMd5, snapshot, callback)
+                            }
                         } else {
                             callback.emitProgress(DownloadStatus.RUNNING, snapshot)
                         }
@@ -371,8 +376,7 @@ internal class Networking(
         chunks: List<DownloadChunk>,
         expectedMd5: String?,
         snapshot: List<DownloadChunkProgress>,
-        callback: SteadyFetchCallback,
-        completionSignal: AtomicBoolean
+        callback: SteadyFetchCallback
     ) {
         try {
             fileManager.reconcileChunks(downloadDir, fileName, chunks)
@@ -382,24 +386,20 @@ internal class Networking(
                 throw IOException("MD5 verification failed for $fileName")
             }
             callback.emitProgress(DownloadStatus.SUCCESS, snapshot)
-            if (completionSignal.compareAndSet(false, true)) {
-                Log.i(Constants.TAG, "All chunks completed with verified checksum")
-                callback.onSuccess()
-            }
+            Log.i(Constants.TAG, "All chunks completed with verified checksum")
+            callback.onSuccess()
         } catch (mergeError: Exception) {
             Log.e(Constants.TAG, "Failed to finalize download", mergeError)
             callback.emitProgress(
                 status = DownloadStatus.FAILED,
                 chunkProgress = snapshot
             )
-            if (completionSignal.compareAndSet(false, true)) {
-                callback.onError(
-                    DownloadError(
-                        code = -1,
-                        message = mergeError.message ?: "Failed to finalize download"
-                    )
+            callback.onError(
+                DownloadError(
+                    code = -1,
+                    message = mergeError.message ?: "Failed to finalize download"
                 )
-            }
+            )
         }
     }
 
