@@ -20,14 +20,16 @@ class DownloadModelsTest {
         assertEquals(4, request.maxParallelDownloads)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun downloadRequest_rejectsParallelLimitAboveMax() {
-        DownloadRequest(
+    @Test
+    fun downloadRequest_doesNotClampParallelLimit() {
+        val overLimit = Constants.MAX_PARALLEL_CHUNKS + 1
+        val request = DownloadRequest(
             url = "https://example.com/file.bin",
             downloadDir = File("/tmp"),
             fileName = "file.bin",
-            maxParallelDownloads = Constants.MAX_PARALLEL_CHUNKS + 1
+            maxParallelDownloads = overLimit
         )
+        assertEquals(overLimit, request.maxParallelDownloads)
     }
 
     @Test

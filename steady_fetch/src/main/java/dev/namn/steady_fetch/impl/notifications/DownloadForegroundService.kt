@@ -1,5 +1,6 @@
 package dev.namn.steady_fetch.impl.notifications
 
+import android.Manifest
 import android.R
 import android.annotation.SuppressLint
 import android.app.Notification
@@ -11,14 +12,17 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import androidx.core.content.ContextCompat
-import android.Manifest
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import dev.namn.steady_fetch.R as SteadyFetchR
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
 import kotlin.math.roundToInt
 
 internal class DownloadForegroundService : Service() {
+
+    private val activeDownloads = LinkedHashMap<Long, DownloadEntry>()
+    private var isInForeground = false
 
     override fun onCreate() {
         super.onCreate()
@@ -27,74 +31,111 @@ internal class DownloadForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) return START_NOT_STICKY
-        val downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1L)
-        val fileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: "SteadyFetch"
-        val progress = intent.getFloatExtra(EXTRA_PROGRESS, 0f).coerceIn(0f, 1f)
-        val statusName = intent.getStringExtra(EXTRA_STATUS)
-        val status = statusName?.let { runCatching { DownloadStatus.valueOf(it) }.getOrNull() }
-            ?: DownloadStatus.RUNNING
-
-        val notification = buildNotification(fileName, progress, status)
-        val notificationId = notificationIdFor(downloadId)
 
         when (intent.action) {
-            ACTION_START -> {
-                if (canPostNotifications()) {
-                    startForeground(notificationId, notification)
-                } else {
-                    Log.w(TAG, "POST_NOTIFICATIONS permission missing; foreground start aborted")
-                    stopSelf()
-                }
-            }
-            ACTION_UPDATE -> {
-                notifySafely(notificationId, notification)
-                if (status == DownloadStatus.SUCCESS || status == DownloadStatus.FAILED) {
-                    stopAndRemove(notificationId)
-                }
-            }
-            ACTION_CANCEL -> {
-                stopAndRemove(notificationId)
-            }
-            else -> {
-                // Ignore unknown action
-            }
+            ACTION_START -> handleStart(intent)
+            ACTION_UPDATE -> handleUpdate(intent)
+            ACTION_CANCEL -> handleCancel(intent)
+            else -> Unit
         }
 
+        refreshNotification()
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun buildNotification(
-        fileName: String,
-        progress: Float,
-        status: DownloadStatus
-    ): Notification {
-        val percent = (progress.coerceIn(0f, 1f) * 100f).roundToInt()
-        val contentText = when (status) {
-            DownloadStatus.RUNNING -> "Transferring packets… $percent%"
-            DownloadStatus.QUEUED -> "Queued – awaiting dispatch"
-            DownloadStatus.SUCCESS -> "Download complete"
-            DownloadStatus.FAILED -> "Download failed"
+    private fun handleStart(intent: Intent) {
+        val downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1L)
+        val fileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: DEFAULT_FILE_NAME
+        if (downloadId == -1L) return
+        val existing = activeDownloads[downloadId]
+        activeDownloads[downloadId] = DownloadEntry(
+            id = downloadId,
+            fileName = fileName,
+            progress = existing?.progress ?: 0f,
+            status = existing?.status ?: DownloadStatus.QUEUED
+        )
+    }
+
+    private fun handleUpdate(intent: Intent) {
+        val downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1L)
+        if (downloadId == -1L) return
+        val fileName = intent.getStringExtra(EXTRA_FILE_NAME)
+            ?: activeDownloads[downloadId]?.fileName
+            ?: DEFAULT_FILE_NAME
+        val progress = intent.getFloatExtra(EXTRA_PROGRESS, 0f).coerceIn(0f, 1f)
+        val statusName = intent.getStringExtra(EXTRA_STATUS)
+        val status = statusName?.let { runCatching { DownloadStatus.valueOf(it) }.getOrNull() }
+            ?: DownloadStatus.RUNNING
+
+        if (status == DownloadStatus.SUCCESS || status == DownloadStatus.FAILED) {
+            activeDownloads.remove(downloadId)
+        } else {
+            activeDownloads[downloadId] = DownloadEntry(downloadId, fileName, progress, status)
         }
-        val iconRes = when (status) {
-            DownloadStatus.SUCCESS -> R.drawable.stat_sys_download_done
-            DownloadStatus.FAILED -> R.drawable.stat_notify_error
-            else -> R.drawable.stat_sys_download
+    }
+
+    private fun handleCancel(intent: Intent) {
+        val downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1L)
+        if (downloadId == -1L) return
+        activeDownloads.remove(downloadId)
+    }
+
+    private fun refreshNotification() {
+        if (activeDownloads.isEmpty()) {
+            stopIfIdle()
+            return
         }
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(iconRes)
-            .setContentTitle(fileName)
-            .setContentText(contentText)
+        if (!canPostNotifications()) {
+            Log.w(TAG, "POST_NOTIFICATIONS permission missing; foreground updates skipped")
+            return
+        }
+
+        val entries = activeDownloads.values.toList()
+        val (title, body) = buildNotificationCopy(entries)
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.stat_sys_download)
             .setOnlyAlertOnce(true)
-            .setOngoing(status == DownloadStatus.RUNNING || status == DownloadStatus.QUEUED)
-            .setProgress(
-                /* max= */ 100,
-                /* progress= */ if (status == DownloadStatus.RUNNING) percent else 0,
-                /* indeterminate= */ status == DownloadStatus.QUEUED
-            )
+            .setOngoing(true)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .build()
+
+        if (!isInForeground) {
+            startForeground(AGGREGATE_NOTIFICATION_ID, notification)
+            isInForeground = true
+        } else {
+            notifySafely(AGGREGATE_NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun stopIfIdle() {
+        if (!isInForeground) {
+            stopSelf()
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        isInForeground = false
+        stopSelf()
+    }
+
+    private fun buildNotificationCopy(entries: List<DownloadEntry>): Pair<String, String> {
+        if (entries.isEmpty()) return DEFAULT_FILE_NAME to ""
+        if (entries.size == 1) {
+            val name = entries.first().fileName
+            return name to name
+        }
+        val title = getString(SteadyFetchR.string.steady_fetch_notification_multi, entries.size)
+        val body = entries.joinToString(separator = "\n") { it.fileName }
+        return title to body
     }
 
     private fun ensureChannel() {
@@ -113,17 +154,6 @@ internal class DownloadForegroundService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun stopAndRemove(notificationId: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
-        cancelSafely(notificationId)
-        stopSelf()
-    }
-
     @SuppressLint("MissingPermission")
     private fun notifySafely(notificationId: Int, notification: Notification) {
         if (!canPostNotifications()) {
@@ -134,14 +164,6 @@ internal class DownloadForegroundService : Service() {
             NotificationManagerCompat.from(this).notify(notificationId, notification)
         } catch (securityException: SecurityException) {
             Log.w(TAG, "Unable to post notification $notificationId", securityException)
-        }
-    }
-
-    private fun cancelSafely(notificationId: Int) {
-        try {
-            NotificationManagerCompat.from(this).cancel(notificationId)
-        } catch (securityException: SecurityException) {
-            Log.w(TAG, "Unable to cancel notification $notificationId", securityException)
         }
     }
 
@@ -156,15 +178,11 @@ internal class DownloadForegroundService : Service() {
         return permissionGranted && NotificationManagerCompat.from(this).areNotificationsEnabled()
     }
 
-    private fun notificationIdFor(downloadId: Long): Int {
-        if (downloadId == -1L) return DEFAULT_NOTIFICATION_ID
-        return ((downloadId xor (downloadId ushr 32)) and 0x7FFFFFFF).toInt()
-    }
-
     companion object {
         private const val CHANNEL_ID = "steady_fetch_downloads"
-        private const val DEFAULT_NOTIFICATION_ID = 0x53_45_44 // "SED" hex
+        private const val AGGREGATE_NOTIFICATION_ID = 0x53_45_44 // "SED" hex
         private const val TAG = "SteadyFetchNotification"
+        private const val DEFAULT_FILE_NAME = "SteadyFetch"
 
         const val ACTION_START = "dev.namn.steady_fetch.action.START"
         const val ACTION_UPDATE = "dev.namn.steady_fetch.action.UPDATE"
@@ -175,4 +193,11 @@ internal class DownloadForegroundService : Service() {
         const val EXTRA_PROGRESS = "extra_progress"
         const val EXTRA_STATUS = "extra_status"
     }
+
+    private data class DownloadEntry(
+        val id: Long,
+        val fileName: String,
+        val progress: Float,
+        val status: DownloadStatus
+    )
 }

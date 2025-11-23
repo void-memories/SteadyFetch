@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -139,7 +140,7 @@ fun DownloadScreen(
     DownloadScreenBody(
         uiState = uiState,
         onUrlChange = viewModel::updateUrl,
-        onDownloadClick = viewModel::queueDownload,
+        onDownloadSelection = viewModel::queueDownloads,
         modifier = modifier
     )
 }
@@ -148,7 +149,7 @@ fun DownloadScreen(
 private fun DownloadScreenBody(
     uiState: DownloadUiState,
     onUrlChange: (String) -> Unit,
-    onDownloadClick: () -> Unit,
+    onDownloadSelection: (List<String>, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showUrlDialog by remember { mutableStateOf(false) }
@@ -204,9 +205,9 @@ private fun DownloadScreenBody(
             url = uiState.url,
             onUrlChange = onUrlChange,
             onDismiss = { showUrlDialog = false },
-            onConfirm = {
+            onConfirm = { selectedSources, typedUrl ->
                 showUrlDialog = false
-                onDownloadClick()
+                onDownloadSelection(selectedSources, typedUrl)
             },
             errorMessage = uiState.errorMessage,
             isDownloading = uiState.isDownloading,
@@ -667,12 +668,13 @@ private fun TerminalInputDialog(
     url: String,
     onUrlChange: (String) -> Unit,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
+    onConfirm: (List<String>, String) -> Unit,
     errorMessage: String?,
     isDownloading: Boolean,
     suggestedUrls: List<String>
 ) {
-    val canConfirm = url.isNotBlank() && !isDownloading
+    val selectedSuggestions = remember { mutableStateListOf<String>() }
+    val canConfirm = (url.isNotBlank() || selectedSuggestions.isNotEmpty()) && !isDownloading
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -717,13 +719,13 @@ private fun TerminalInputDialog(
                 if (suggestedUrls.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "> available sources:",
+                            text = "> available sources (multi-select):",
                             color = MatrixGreenDim,
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold
                         )
                         suggestedUrls.forEach { suggestion ->
-                            val isSelected = suggestion == url
+                            val isSelected = selectedSuggestions.contains(suggestion)
                             val tag = if (isSelected) "[X]" else "[ ]"
                             Text(
                                 text = "$tag $suggestion",
@@ -741,7 +743,13 @@ private fun TerminalInputDialog(
                                         )
                                     )
                                     .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    .clickable { onUrlChange(suggestion) },
+                                    .clickable {
+                                        if (isSelected) {
+                                            selectedSuggestions.remove(suggestion)
+                                        } else {
+                                            selectedSuggestions.add(suggestion)
+                                        }
+                                    },
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -752,7 +760,13 @@ private fun TerminalInputDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm, enabled = canConfirm) {
+            TextButton(
+                onClick = {
+                    onConfirm(selectedSuggestions.toList(), url)
+                    selectedSuggestions.clear()
+                },
+                enabled = canConfirm
+            ) {
                 Text(
                     "> execute",
                     color = if (canConfirm) MatrixGreenBright else MatrixGreenDim,
@@ -761,7 +775,10 @@ private fun TerminalInputDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                selectedSuggestions.clear()
+                onDismiss()
+            }) {
                 Text(
                     "> cancel",
                     color = MatrixGreenDim,
@@ -818,7 +835,7 @@ private fun DownloadScreenPreview() {
         DownloadScreenBody(
             uiState = previewState,
             onUrlChange = {},
-            onDownloadClick = {},
+            onDownloadSelection = { _, _ -> },
             modifier = Modifier.fillMaxSize()
         )
     }

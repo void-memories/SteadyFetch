@@ -2,18 +2,18 @@ package dev.namn.steady_fetch.impl.controllers
 
 import android.os.SystemClock
 import android.util.Log
-import dev.namn.steady_fetch.impl.utils.Constants
 import dev.namn.steady_fetch.impl.callbacks.SteadyFetchCallback
-import dev.namn.steady_fetch.impl.datamodels.DownloadChunk
+import dev.namn.steady_fetch.impl.datamodels.DownloadError
 import dev.namn.steady_fetch.impl.datamodels.DownloadMetadata
 import dev.namn.steady_fetch.impl.datamodels.DownloadProgress
 import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
-import dev.namn.steady_fetch.impl.datamodels.DownloadError
+import dev.namn.steady_fetch.impl.extensions.convertToDownloadError
 import dev.namn.steady_fetch.impl.io.Networking
-import dev.namn.steady_fetch.impl.managers.FileManager
 import dev.namn.steady_fetch.impl.managers.ChunkManager
+import dev.namn.steady_fetch.impl.managers.FileManager
 import dev.namn.steady_fetch.impl.notifications.DownloadNotificationManager
+import dev.namn.steady_fetch.impl.utils.Constants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -30,90 +30,115 @@ internal class SteadyFetchController(
     private val activeJobs = ConcurrentHashMap<Long, Job>()
 
     fun queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long {
-        val downloadId = SystemClock.elapsedRealtimeNanos()
+        val downloadId = nextDownloadId()
         Log.i(Constants.TAG, "queueDownload id=$downloadId url=${request.url}")
+        request.validate()
 
-        require(request.maxParallelDownloads in 1..Constants.MAX_PARALLEL_CHUNKS) {
-            "maxParallelDownloads must be between 1 and ${Constants.MAX_PARALLEL_CHUNKS}"
+        val decoratedCallback = callback.decorateWithNotifications(downloadId, request.fileName)
+        notificationManager.start(downloadId, request.fileName)
+
+        val job = ioScope.launch {
+            try {
+                val metadata = prepareMetadata(request)
+                networking.download(downloadId, metadata, decoratedCallback)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                Log.e(Constants.TAG, "Failed before download started for $downloadId", throwable)
+                decoratedCallback.onError(throwable.convertToDownloadError())
+            }
         }
 
-        val decoratedCallback = object : SteadyFetchCallback {
+        registerJob(downloadId, job)
+        return downloadId
+    }
+
+    fun cancel(downloadId: Long): Boolean {
+        return try {
+            val job = activeJobs.remove(downloadId)
+            val jobCancelled = job?.let {
+                it.cancel(CancellationException("User cancelled download $downloadId"))
+                true
+            } ?: false
+            val networkCancelled = networking.cancel(downloadId)
+            notificationManager.cancel(downloadId)
+            jobCancelled || networkCancelled
+        } catch (throwable: Throwable) {
+            Log.e(Constants.TAG, "Failed to cancel download $downloadId", throwable)
+            false
+        }
+    }
+
+    private fun nextDownloadId(): Long = SystemClock.elapsedRealtimeNanos()
+
+    private fun DownloadRequest.validate() {
+        require(maxParallelDownloads in 1..Constants.MAX_PARALLEL_CHUNKS) {
+            "maxParallelDownloads must be between 1 and ${Constants.MAX_PARALLEL_CHUNKS}"
+        }
+    }
+
+    private fun SteadyFetchCallback.decorateWithNotifications(
+        downloadId: Long,
+        fileName: String
+    ): SteadyFetchCallback {
+        val delegate = this
+        return object : SteadyFetchCallback {
             override fun onSuccess() {
-                notificationManager.update(
-                    downloadId,
-                    request.fileName,
-                    1f,
-                    DownloadStatus.SUCCESS
-                )
-                callback.onSuccess()
+                notificationManager.update(downloadId, fileName, 1f, DownloadStatus.SUCCESS)
+                delegate.onSuccess()
             }
 
             override fun onUpdate(progress: DownloadProgress) {
                 notificationManager.update(
                     downloadId,
-                    request.fileName,
+                    fileName,
                     progress.progress,
                     progress.status
                 )
-                callback.onUpdate(progress)
+                delegate.onUpdate(progress)
             }
 
             override fun onError(error: DownloadError) {
-                notificationManager.update(
-                    downloadId,
-                    request.fileName,
-                    0f,
-                    DownloadStatus.FAILED
-                )
-                callback.onError(error)
+                notificationManager.update(downloadId, fileName, 0f, DownloadStatus.FAILED)
+                delegate.onError(error)
             }
         }
+    }
 
-        notificationManager.start(downloadId, request.fileName)
+    private suspend fun prepareMetadata(request: DownloadRequest): DownloadMetadata {
+        fileManager.createDirectoryIfNotExists(request.downloadDir)
 
-        val job = ioScope.launch {
-            fileManager.createDirectoryIfNotExists(request.downloadDir)
+        val remoteMetadata = networking.fetchRemoteMetadata(request.url, request.headers)
+        val contentLength = remoteMetadata.contentLength
 
-            val remoteMetadata = networking.fetchRemoteMetadata(request.url, request.headers)
-            val expectedFileSize = remoteMetadata.contentLength
-            var chunks: List<DownloadChunk>? = null
-
-            if (expectedFileSize == null) {
-                Log.w(Constants.TAG, "Content length unknown, skipping storage validation")
-            } else {
-                Log.d(Constants.TAG, "Expected file size $expectedFileSize bytes")
-                fileManager.validateStorageCapacity(request.downloadDir, expectedFileSize)
-                if (remoteMetadata.supportsRanges) {
-                    chunks = chunkManager.generateChunks(request.fileName, expectedFileSize)
-                } else {
-                    Log.i(Constants.TAG, "Chunked transfer not supported, downloading whole file")
-                }
-            }
-
-            val metadata = DownloadMetadata(
-                request = request,
-                chunks = chunks,
-                contentMd5 = remoteMetadata.contentMd5
-            )
-
-            networking.download(downloadId, metadata, decoratedCallback)
+        if (contentLength == null) {
+            Log.w(Constants.TAG, "Content length unknown, skipping storage validation")
+        } else {
+            Log.d(Constants.TAG, "Expected file size $contentLength bytes")
+            fileManager.validateStorageCapacity(request.downloadDir, contentLength)
         }
+
+        val chunks = if (contentLength != null && remoteMetadata.supportsRanges) {
+            chunkManager.generateChunks(request.fileName, contentLength)
+        } else {
+            if (contentLength != null) {
+                Log.i(Constants.TAG, "Chunked transfer not supported, downloading whole file")
+            }
+            null
+        }
+
+        return DownloadMetadata(
+            request = request,
+            chunks = chunks,
+            contentMd5 = remoteMetadata.contentMd5
+        )
+    }
+
+    private fun registerJob(downloadId: Long, job: Job) {
         activeJobs[downloadId] = job
         job.invokeOnCompletion {
             activeJobs.remove(downloadId)
             networking.cancel(downloadId)
         }
-        return downloadId
-    }
-
-    fun cancel(downloadId: Long): Boolean {
-        val job = activeJobs.remove(downloadId)
-        val jobCancelled = job?.let {
-            it.cancel(CancellationException("User cancelled download $downloadId"))
-            true
-        } ?: false
-        val networkCancelled = networking.cancel(downloadId)
-        notificationManager.cancel(downloadId)
-        return jobCancelled || networkCancelled
     }
 }

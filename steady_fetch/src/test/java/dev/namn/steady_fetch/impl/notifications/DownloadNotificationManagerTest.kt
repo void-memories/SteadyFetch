@@ -4,10 +4,8 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
 import androidx.core.content.ContextCompat
-import androidx.test.core.app.ApplicationProvider
-import io.mockk.Runs
 import io.mockk.every
-import io.mockk.just
+import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
@@ -21,15 +19,19 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DownloadNotificationManagerTest {
 
-    private val application: Application = ApplicationProvider.getApplicationContext()
+    private val application: Application = mockk(relaxed = true)
     private val manager = DownloadNotificationManager(application)
-    private val intentSlot = slot<Intent>()
+    private val startIntentSlot = slot<Intent>()
+    private val serviceIntentSlot = slot<Intent>()
 
     @Before
     fun setUp() {
         mockkStatic(ContextCompat::class)
-        every { ContextCompat.startForegroundService(application, capture(intentSlot)) } answers {
-            ComponentName(application, DownloadForegroundService::class.java)
+        every { ContextCompat.startForegroundService(application, capture(startIntentSlot)) } answers {
+            ComponentName("dev.namn.steady_fetch", DownloadForegroundService::class.java.name)
+        }
+        every { application.startService(capture(serviceIntentSlot)) } answers {
+            ComponentName("dev.namn.steady_fetch", DownloadForegroundService::class.java.name)
         }
     }
 
@@ -42,7 +44,7 @@ class DownloadNotificationManagerTest {
     fun start_buildsStartIntent() {
         manager.start(42L, "file.bin")
 
-        val intent = intentSlot.captured
+        val intent = startIntentSlot.captured
         assertEquals(DownloadForegroundService.ACTION_START, intent.action)
         assertEquals(42L, intent.getLongExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, -1))
         assertEquals("file.bin", intent.getStringExtra(DownloadForegroundService.EXTRA_FILE_NAME))
@@ -52,7 +54,7 @@ class DownloadNotificationManagerTest {
     fun update_includesProgressPayload() {
         manager.update(7L, "chunk", 0.5f, dev.namn.steady_fetch.impl.datamodels.DownloadStatus.RUNNING)
 
-        val intent = intentSlot.captured
+        val intent = serviceIntentSlot.captured
         assertEquals(DownloadForegroundService.ACTION_UPDATE, intent.action)
         assertEquals(0.5f, intent.getFloatExtra(DownloadForegroundService.EXTRA_PROGRESS, -1f))
     }
@@ -61,7 +63,7 @@ class DownloadNotificationManagerTest {
     fun cancel_targetsMatchingDownload() {
         manager.cancel(10L)
 
-        val intent = intentSlot.captured
+        val intent = serviceIntentSlot.captured
         assertEquals(DownloadForegroundService.ACTION_CANCEL, intent.action)
         assertEquals(10L, intent.getLongExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, -1))
     }

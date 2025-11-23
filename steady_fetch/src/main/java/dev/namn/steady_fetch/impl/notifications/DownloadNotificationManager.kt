@@ -26,7 +26,7 @@ internal class DownloadNotificationManager(
             putExtra(DownloadForegroundService.EXTRA_PROGRESS, progress)
             putExtra(DownloadForegroundService.EXTRA_STATUS, status.name)
         }
-        ContextCompat.startForegroundService(application, intent)
+        application.startService(intent)
     }
 
     fun cancel(downloadId: Long) {
@@ -34,6 +34,6 @@ internal class DownloadNotificationManager(
             action = DownloadForegroundService.ACTION_CANCEL
             putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
         }
-        ContextCompat.startForegroundService(application, intent)
+        application.startService(intent)
     }
 }

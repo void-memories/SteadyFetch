@@ -11,13 +11,14 @@ import dev.namn.steady_fetch.impl.datamodels.DownloadError
 import dev.namn.steady_fetch.impl.datamodels.DownloadProgress
 import dev.namn.steady_fetch.impl.datamodels.DownloadRequest
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
+import java.io.File
+import java.util.LinkedHashSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 data class ChunkProgressUi(
     val name: String,
@@ -45,13 +46,39 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(url = url, errorMessage = null) }
     }
 
-    fun queueDownload() {
-        val url = _uiState.value.url.trim()
-        if (url.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Please enter a valid URL") }
+    fun queueDownloads(selectedUrls: List<String>, manualUrl: String) {
+        val unique = LinkedHashSet<String>()
+        selectedUrls.map { it.trim() }
+            .filter { it.isNotBlank() }
+            .forEach(unique::add)
+        val typed = manualUrl.trim()
+        if (typed.isNotBlank()) {
+            unique.add(typed)
+        }
+
+        if (unique.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Please select at least one URL") }
             return
         }
 
+        viewModelScope.launch(Dispatchers.Default) {
+            unique.forEachIndexed { index, downloadUrl ->
+                queueDownloadInternal(downloadUrl, isFirst = index == 0)
+            }
+        }
+    }
+
+    private fun resolveOutputDirectory(): File {
+        val appContext = getApplication<Application>()
+        val preferred = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        return preferred ?: appContext.filesDir
+    }
+
+    private fun deriveFileName(url: String): String {
+        return Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() } ?: "download.bin"
+    }
+
+    private suspend fun queueDownloadInternal(url: String, isFirst: Boolean) {
         val outputDir = resolveOutputDirectory()
         val fileName = deriveFileName(url)
         val request = DownloadRequest(
@@ -66,49 +93,40 @@ class DownloadViewModel(application: Application) : AndroidViewModel(application
 
         val callback = createCallback()
 
-        viewModelScope.launch(Dispatchers.Default) {
-            withContext(Dispatchers.Main) {
+        withContext(Dispatchers.Main) {
+            if (isFirst) {
                 _uiState.update {
                     it.copy(
                         isDownloading = true,
                         errorMessage = null,
                         status = DownloadStatus.QUEUED,
                         overallProgress = 0f,
-                        chunkProgress = emptyList()
+                        chunkProgress = emptyList(),
+                        url = ""
                     )
                 }
             }
+        }
 
-            val result = runCatching {
-                SteadyFetch.queueDownload(request, callback)
+        val result = runCatching {
+            SteadyFetch.queueDownload(request, callback)
+        }
+
+        result.onSuccess { downloadId ->
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(downloadId = downloadId, isDownloading = true) }
             }
-
-            result.onSuccess { downloadId ->
-                withContext(Dispatchers.Main) {
-                    _uiState.update { it.copy(downloadId = downloadId) }
-                }
-            }.onFailure { error ->
-                withContext(Dispatchers.Main) {
-                    _uiState.update {
-                        it.copy(
-                            errorMessage = error.message ?: "Failed to queue download",
-                            isDownloading = false,
-                            status = DownloadStatus.FAILED
-                        )
-                    }
+        }.onFailure { error ->
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(
+                        errorMessage = error.message ?: "Failed to queue download",
+                        isDownloading = false,
+                        status = DownloadStatus.FAILED
+                    )
                 }
             }
         }
-    }
-
-    private fun resolveOutputDirectory(): File {
-        val appContext = getApplication<Application>()
-        val preferred = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        return preferred ?: appContext.filesDir
-    }
-
-    private fun deriveFileName(url: String): String {
-        return Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() } ?: "download.bin"
     }
 
     private fun createCallback(): SteadyFetchCallback {
