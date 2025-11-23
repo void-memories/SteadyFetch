@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="steady_fetch_notification_multi">%1$d downloads in progress</string>
+    <string name="steady_fetch_notification_more">+%1$d more</string>
 </resources>
 

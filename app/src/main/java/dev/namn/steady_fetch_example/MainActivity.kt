@@ -24,6 +24,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -65,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -75,6 +78,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.namn.steady_fetch.impl.datamodels.DownloadStatus
@@ -141,6 +146,7 @@ fun DownloadScreen(
         uiState = uiState,
         onUrlChange = viewModel::updateUrl,
         onDownloadSelection = viewModel::queueDownloads,
+        onSelectDownload = viewModel::selectDownload,
         modifier = modifier
     )
 }
@@ -150,11 +156,16 @@ private fun DownloadScreenBody(
     uiState: DownloadUiState,
     onUrlChange: (String) -> Unit,
     onDownloadSelection: (List<String>, String) -> Unit,
+    onSelectDownload: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showUrlDialog by remember { mutableStateOf(false) }
-    val progress = uiState.overallProgress.coerceIn(0f, 1f)
-    val status = uiState.status ?: DownloadStatus.QUEUED
+    val downloads = uiState.downloads.values.toList()
+    val selectedDownload = uiState.selectedDownloadId?.let { uiState.downloads[it] }
+    val progress = selectedDownload?.overallProgress?.coerceIn(0f, 1f) ?: 0f
+    val status = selectedDownload?.status ?: DownloadStatus.QUEUED
+    val chunkProgress = selectedDownload?.chunkProgress ?: emptyList()
+    val hasActiveDownloads = downloads.any { it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.QUEUED }
 
     Box(
         modifier = modifier
@@ -171,10 +182,20 @@ private fun DownloadScreenBody(
             TerminalHeader()
             
             Spacer(modifier = Modifier.height(16.dp))
+
+            if (downloads.isNotEmpty()) {
+                DownloadTabs(
+                    downloads = downloads,
+                    selectedId = uiState.selectedDownloadId,
+                    onSelect = onSelectDownload,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             
             // Chunk matrix
             ChunkMatrix(
-                chunks = uiState.chunkProgress,
+                chunks = chunkProgress,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -191,7 +212,7 @@ private fun DownloadScreenBody(
                 .align(Alignment.BottomCenter),
             progress = progress,
             status = status,
-            isDownloading = uiState.isDownloading,
+            isDownloading = hasActiveDownloads,
             onAddClick = { showUrlDialog = true }
         )
 
@@ -213,6 +234,55 @@ private fun DownloadScreenBody(
             isDownloading = uiState.isDownloading,
             suggestedUrls = DemoDownloadLinks
         )
+    }
+}
+
+@Composable
+private fun DownloadTabs(
+    downloads: List<DownloadDisplay>,
+    selectedId: Long?,
+    onSelect: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+    Row(
+        modifier = modifier
+            .horizontalScroll(scrollState)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        downloads.forEach { download ->
+            val isSelected = download.id == selectedId
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSelect(download.id) },
+                color = if (isSelected) MatrixGreen.copy(alpha = 0.2f) else Color.Transparent,
+                border = BorderStroke(1.dp, MatrixGreen)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .widthIn(min = 120.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = download.fileName,
+                        color = MatrixGreenBright,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = download.status.name.lowercase(),
+                        color = MatrixGreenDim,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -821,21 +891,42 @@ private fun VintageScanlineOverlay(modifier: Modifier = Modifier) {
 @Composable
 private fun DownloadScreenPreview() {
     SteadyFetchExampleTheme {
+        val previewChunks = listOf(
+            ChunkProgressUi("chunk-1", 0, 0.4f, DownloadStatus.RUNNING),
+            ChunkProgressUi("chunk-2", 1, 0.9f, DownloadStatus.RUNNING),
+            ChunkProgressUi("chunk-3", 2, 0.2f, DownloadStatus.RUNNING)
+        )
+        val previewDownloads = mapOf(
+            1L to DownloadDisplay(
+                id = 1L,
+                fileName = "matrix.iso",
+                status = DownloadStatus.RUNNING,
+                overallProgress = 0.58f,
+                chunkProgress = previewChunks
+            ),
+            2L to DownloadDisplay(
+                id = 2L,
+                fileName = "sequel.iso",
+                status = DownloadStatus.QUEUED,
+                overallProgress = 0f,
+                chunkProgress = emptyList()
+            )
+        )
         val previewState = DownloadUiState(
             url = "https://example.com/file.zip",
             status = DownloadStatus.RUNNING,
             isDownloading = true,
+            downloadId = 1L,
             overallProgress = 0.58f,
-            chunkProgress = listOf(
-                ChunkProgressUi("chunk-1", 0, 0.4f, DownloadStatus.RUNNING),
-                ChunkProgressUi("chunk-2", 1, 0.9f, DownloadStatus.RUNNING),
-                ChunkProgressUi("chunk-3", 2, 0.2f, DownloadStatus.RUNNING)
-            )
+            chunkProgress = previewChunks,
+            downloads = previewDownloads,
+            selectedDownloadId = 1L
         )
         DownloadScreenBody(
             uiState = previewState,
             onUrlChange = {},
             onDownloadSelection = { _, _ -> },
+            onSelectDownload = {},
             modifier = Modifier.fillMaxSize()
         )
     }

@@ -13,7 +13,7 @@ internal class DownloadNotificationManager(
         val intent = Intent(application, DownloadForegroundService::class.java).apply {
             action = DownloadForegroundService.ACTION_START
             putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
-            putExtra(DownloadForegroundService.EXTRA_FILE_NAME, fileName)
+            putExtra(DownloadForegroundService.EXTRA_FILE_NAME, sanitize(fileName))
         }
         ContextCompat.startForegroundService(application, intent)
     }
@@ -22,7 +22,7 @@ internal class DownloadNotificationManager(
         val intent = Intent(application, DownloadForegroundService::class.java).apply {
             action = DownloadForegroundService.ACTION_UPDATE
             putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
-            putExtra(DownloadForegroundService.EXTRA_FILE_NAME, fileName)
+            putExtra(DownloadForegroundService.EXTRA_FILE_NAME, sanitize(fileName))
             putExtra(DownloadForegroundService.EXTRA_PROGRESS, progress)
             putExtra(DownloadForegroundService.EXTRA_STATUS, status.name)
         }
@@ -35,5 +35,15 @@ internal class DownloadNotificationManager(
             putExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, downloadId)
         }
         application.startService(intent)
+    }
+
+    private fun sanitize(name: String): String {
+        if (name.length <= MAX_FILENAME_LENGTH) return name
+        return name.substring(0, MAX_FILENAME_LENGTH) + INTENT_ELLIPSIS
+    }
+
+    companion object {
+        private const val MAX_FILENAME_LENGTH = 512
+        private const val INTENT_ELLIPSIS = "…"
     }
 }

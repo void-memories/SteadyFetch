@@ -67,5 +67,18 @@ class DownloadNotificationManagerTest {
         assertEquals(DownloadForegroundService.ACTION_CANCEL, intent.action)
         assertEquals(10L, intent.getLongExtra(DownloadForegroundService.EXTRA_DOWNLOAD_ID, -1))
     }
+
+    @Test
+    fun start_truncatesLongFileNamesForIntent() {
+        val longName = buildString {
+            repeat(600) { append('a') }
+        }
+        manager.start(1L, longName)
+
+        val intent = startIntentSlot.captured
+        val stored = intent.getStringExtra(DownloadForegroundService.EXTRA_FILE_NAME)!!
+        assert(stored.length <= 513) // 512 + ellipsis
+        assert(stored.endsWith("…"))
+    }
 }
 
