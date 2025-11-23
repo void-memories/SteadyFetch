@@ -97,16 +97,6 @@ class SteadyFetchApp : Application() {
 }
 ```
 
-Remember to register your `Application` class in `AndroidManifest.xml`:
-
-```xml
-<application
-    android:name=".SteadyFetchApp"
-    ... >
-    ...
-</application>
-```
-
 ### 2. Queue a download
 
 ```kotlin
