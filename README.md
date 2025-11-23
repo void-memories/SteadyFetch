@@ -19,11 +19,12 @@ SteadyFetch is a Kotlin SDK for Android that provides reliable, resumable downlo
 3. [Installation](#installation)
 4. [Quickstart (5 minutes)](#quickstart-5-minutes)
 5. [Usage Example](#usage-example)
-6. [How It Works (High Level)](#how-it-works-high-level)
-7. [FAQ](#faq)
-8. [Roadmap](#roadmap)
-9. [Contributing](#contributing)
-10. [License](#license)
+6. [API Reference](#api-reference)
+7. [How It Works (High Level)](#how-it-works-high-level)
+8. [FAQ](#faq)
+9. [Roadmap](#roadmap)
+10. [Contributing](#contributing)
+11. [License](#license)
 
 ---
 
@@ -183,6 +184,166 @@ fun startIsoDownload(context: Context) {
 ```
 
 All public entry points live under the `dev.namn.steady_fetch` package and are backed by unit tests (MockK, Robolectric, MockWebServer).
+
+---
+
+## API Reference
+
+### Public APIs
+
+#### `SteadyFetch.initialize(application: Application)`
+
+Initializes the SteadyFetch SDK. Must be called once before using any other APIs, typically in your `Application.onCreate()`.
+
+**Parameters:**
+- `application: Application` - Your application instance
+
+**Throws:** `IllegalStateException` if initialization fails
+
+---
+
+#### `SteadyFetch.queueDownload(request: DownloadRequest, callback: SteadyFetchCallback): Long`
+
+Enqueues a new download and returns a unique download ID. The download runs asynchronously in a foreground service.
+
+**Parameters:**
+- `request: DownloadRequest` - Download configuration (see [Data Models](#data-models))
+- `callback: SteadyFetchCallback` - Callback interface for progress updates and completion
+
+**Returns:** `Long` - Unique download ID that can be used to cancel the download
+
+**Throws:** `IllegalStateException` if SteadyFetch is not initialized
+
+---
+
+#### `SteadyFetch.cancelDownload(downloadId: Long): Boolean`
+
+Cancels an active download by its ID.
+
+**Parameters:**
+- `downloadId: Long` - The download ID returned from `queueDownload()`
+
+**Returns:** `Boolean` - `true` if a download was found and cancelled, `false` otherwise
+
+---
+
+### Data Models
+
+#### `DownloadRequest`
+
+Configuration object for a download request.
+
+```kotlin
+data class DownloadRequest(
+    val url: String,                                    // Required: URL of the file to download
+    val headers: Map<String, String> = emptyMap(),      // Optional: Custom HTTP headers (e.g., auth tokens)
+    val maxParallelDownloads: Int = 4,                 // Optional: Max concurrent chunks (1-25, default 4)
+    val downloadDir: File,                              // Required: Directory where the file will be saved
+    val fileName: String,                               // Required: Name for the final downloaded file
+)
+```
+
+**Fields:**
+- `url` - The HTTP/HTTPS URL of the file to download
+- `headers` - Optional map of HTTP headers (useful for authentication, custom user agents, etc.)
+- `maxParallelDownloads` - Maximum number of chunks to download concurrently. Must be between 1 and 25. Higher values may improve speed on fast connections but can overwhelm slower networks.
+- `downloadDir` - The directory where the file will be saved. Must be writable. The directory will be created if it doesn't exist.
+- `fileName` - The name of the final file after download completes (e.g., `"video.mp4"`, `"document.pdf"`)
+
+---
+
+#### `SteadyFetchCallback`
+
+Interface for receiving download progress updates and completion notifications.
+
+```kotlin
+interface SteadyFetchCallback {
+    fun onSuccess()
+    fun onUpdate(progress: DownloadProgress)
+    fun onError(error: DownloadError)
+}
+```
+
+**Methods:**
+- `onSuccess()` - Called when the download completes successfully. The file is available at `downloadDir/fileName`.
+- `onUpdate(progress: DownloadProgress)` - Called periodically with progress updates. See `DownloadProgress` below for details.
+- `onError(error: DownloadError)` - Called when the download fails. See `DownloadError` below for details.
+
+---
+
+#### `DownloadProgress`
+
+Snapshot of the current download state, including overall progress and per-chunk status.
+
+```kotlin
+data class DownloadProgress(
+    val status: DownloadStatus,                         // Current overall download status
+    val progress: Float,                                // Overall progress (0.0 to 1.0)
+    val chunkProgress: List<DownloadChunkProgress>     // Per-chunk progress details
+)
+```
+
+**Fields:**
+- `status` - Current status of the download (see `DownloadStatus` enum below)
+- `progress` - Overall progress as a float between 0.0 (0%) and 1.0 (100%)
+- `chunkProgress` - List of progress information for each chunk (empty for non-chunked downloads)
+
+---
+
+#### `DownloadChunkProgress`
+
+Progress information for a single chunk.
+
+```kotlin
+data class DownloadChunkProgress(
+    val status: DownloadStatus,                         // Status of this chunk
+    val name: String,                                   // Chunk filename (e.g., "file.iso.part01")
+    val progress: Float                                  // Chunk progress (0.0 to 1.0)
+)
+```
+
+**Fields:**
+- `status` - Current status of this chunk
+- `name` - The temporary filename of this chunk (useful for debugging)
+- `progress` - Progress of this chunk as a float between 0.0 and 1.0
+
+---
+
+#### `DownloadError`
+
+Error information when a download fails.
+
+```kotlin
+data class DownloadError(
+    val code: Int,                                      // Error code (HTTP status code if available, or -1)
+    val message: String                                 // Human-readable error message
+)
+```
+
+**Fields:**
+- `code` - Error code. If the error is HTTP-related, this will be the HTTP status code (e.g., 404, 500). Otherwise, it may be -1 for generic errors, 499 for cancellations, 400 for bad requests, or 500 for internal errors.
+- `message` - Descriptive error message explaining what went wrong
+
+---
+
+#### `DownloadStatus`
+
+Enum representing the current state of a download or chunk.
+
+```kotlin
+enum class DownloadStatus {
+    QUEUED,    // Download is queued but not yet started
+    RUNNING,   // Download is actively in progress
+    FAILED,    // Download has failed
+    SUCCESS    // Download completed successfully
+}
+```
+
+**Values:**
+- `QUEUED` - The download is queued and waiting to start
+- `RUNNING` - The download is actively transferring data
+- `FAILED` - The download encountered an error and stopped
+- `SUCCESS` - The download completed successfully
 
 ---
 
