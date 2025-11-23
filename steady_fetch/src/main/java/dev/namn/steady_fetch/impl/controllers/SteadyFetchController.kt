@@ -136,9 +136,13 @@ internal class SteadyFetchController(
 
     private fun registerJob(downloadId: Long, job: Job) {
         activeJobs[downloadId] = job
-        job.invokeOnCompletion {
+        job.invokeOnCompletion { cause ->
             activeJobs.remove(downloadId)
-            networking.cancel(downloadId)
+            // Only cancel network calls if the job was cancelled
+            // On normal completion, calls are already cleaned up in downloadToFile's finally block
+            if (cause is CancellationException) {
+                networking.cancel(downloadId)
+            }
         }
     }
 }
